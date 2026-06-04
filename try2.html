@@ -2,99 +2,126 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>AI Video Studio - GitHub Edition</title>
+<title>AI Video Generator Fixed</title>
 <style>
 body{background:#000;color:#0f0;font-family:tahoma;text-align:center;padding:15px}
-h1{color:#ff0}
+h1{color:#ff0;font-size:22px}
 textarea{width:90%;height:60px;background:#111;color:#0f0;border:2px solid #0f0;border-radius:8px;padding:8px;font-size:15px}
 button{padding:12px 25px;font-size:16px;background:#0f0;color:#000;border:none;margin:5px;cursor:pointer;border-radius:8px;font-weight:bold}
 canvas{background:#000;border:3px solid #0f0;border-radius:10px;margin-top:10px;max-width:100%}
 #log{color:#0ff;margin-top:8px;font-size:13px}
-img{margin-top:10px;border:2px solid #ff0;max-width:640px}
+#preview{margin-top:10px}
 </style>
 </head>
 <body>
-<h1>🎬 AI Video - شغال على GitHub Pages</h1>
+<h1>🎬 مولد فيديو - نسخة ثابتة</h1>
 
-<textarea id="prompt" placeholder="مثال: كرة حمراء بتنط + نص مرحبا"></textarea>
+<textarea id="prompt" placeholder="اكتب هنا: كرة حمراء بتنط + نص مرحبا"></textarea>
 <br>
-<button onclick="generateVideo()">🚀 ولد الفيديو</button>
-<button onclick="downloadGIF()">💾 نزل كـ GIF</button>
+<button id="btnGen">ولد الفيديو</button>
+<button id="btnDownload">نزل الفريمات</button>
 
 <canvas id="canvas" width="640" height="480"></canvas>
-<div id="log">اكتب وصف واضغط ولد</div>
-<div id="gifBox"></div>
+<div id="log">جاهز...</div>
+<div id="preview"></div>
 
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const log = t => document.getElementById('log').innerHTML = t;
-let frames = [];
+const logBox = document.getElementById('log');
+const btnGen = document.getElementById('btnGen');
+const btnDownload = document.getElementById('btnDownload');
+
+function log(msg){
+  logBox.innerHTML = msg;
+}
 
 function parsePrompt(text){
   text = text.toLowerCase();
   return {
-    hasPerson: text.includes('ولد') || text.includes('بنت'),
-    hasText: text.includes('نص'),
-    textContent: 'مرحبا',
-    bg: text.includes('سماء')?'skyblue':text.includes('بحر')?'blue':'black',
-    action: text.includes('رقص')?'dance':'bounce'
+    hasPerson: text.indexOf('ولد') > -1 || text.indexOf('بنت') > -1,
+    hasText: text.indexOf('نص') > -1,
+    bg: text.indexOf('سماء') > -1? 'skyblue' : text.indexOf('بحر') > -1? 'blue' : 'black'
   };
 }
 
-function drawPerson(x,y,frame){
+function drawPerson(x, y, frame){
   ctx.fillStyle = '#ffdbac';
-  ctx.beginPath(); ctx.arc(x, y-40, 20, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#00f'; ctx.fillRect(x-10, y-20, 20, 40);
-  let leg = Math.sin(frame*0.3) * 15;
-  ctx.fillRect(x-8, y+20, 8, 25); ctx.fillRect(x+leg, y+20, 8, 25);
+  ctx.beginPath();
+  ctx.arc(x, y-40, 20, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#00f';
+  ctx.fillRect(x-10, y-20, 20, 40);
+  var leg = Math.sin(frame*0.3) * 15;
+  ctx.fillRect(x-8, y+20, 8, 25);
+  ctx.fillRect(x+leg, y+20, 8, 25);
 }
 
-window.generateVideo = async function(){
-  const prompt = document.getElementById('prompt').value;
-  if(!prompt){ alert('اكتب وصف أول'); return; }
+var frames = [];
 
-  const scene = parsePrompt(prompt);
+function generateVideo(){
+  var prompt = document.getElementById('prompt').value;
+  if(prompt === ''){
+    alert('اكتب وصف أول');
+    return;
+  }
+
+  var scene = parsePrompt(prompt);
   frames = [];
-  let x = 320, y = 300, vx = 2, vy = -3;
+  var x = 320, y = 300, vx = 2, vy = -3;
 
-  log('جاري توليد 90 فريم... انتظر 5 ثواني');
+  log('جاري توليد 60 فريم...');
 
-  for(let i=0; i<90; i++){
-    ctx.fillStyle = scene.bg; ctx.fillRect(0,0,640,480);
+  for(var i=0; i<60; i++){
+    ctx.fillStyle = scene.bg;
+    ctx.fillRect(0,0,640,480);
 
     if(scene.hasPerson){
-      x += vx; y += vy; vy += 0.15;
-      if(x < 50 || x > 590) vx *= -1;
-      if(y > 300){ y = 300; vy *= -0.7; }
+      x = x + vx;
+      y = y + vy;
+      vy = vy + 0.15;
+      if(x < 50 || x > 590) vx = vx * -1;
+      if(y > 300){ y = 300; vy = vy * -0.7; }
       drawPerson(x, y, i);
     }
 
     if(scene.hasText){
-      ctx.fillStyle = 'yellow'; ctx.font = 'bold 40px Tahoma'; 
-      ctx.textAlign = 'center'; ctx.fillText('مرحبا', 320, 50);
+      ctx.fillStyle = 'yellow';
+      ctx.font = 'bold 40px Tahoma';
+      ctx.textAlign = 'center';
+      ctx.fillText('مرحبا', 320, 50);
     }
 
     frames.push(canvas.toDataURL('image/png'));
-    if(i % 15 === 0) log(فريم ${i}/90);
+
+    if(i % 10 === 0){
+      log('فريم ' + i + '/60 - ' + Math.floor(i/60*100) + '%');
+    }
   }
 
-  log('✅ تم! الصور جاهزة. اضغط نزل كـ GIF');
-  // نعرض أول فريم كمعاينة
-  document.getElementById('gifBox').innerHTML = <img src="${frames[0]}"><br>دي المعاينة - الفيديو = 90 صورة ورا بعض;
+  log('تم التوليد ✅ المعاينة تحت');
+  document.getElementById('preview').innerHTML = '<img src="' + frames[0] + '" width="320">';
 }
 
-window.downloadGIF = function(){
-  if(frames.length === 0){ alert('ولد الفيديو أول'); return; }
-  // نحفظ كـ ZIP فيه كل الصور عشان تحولها لفيديو براك
-  let zipContent = 'للتحويل لفيديو: افتح frames.zip في موقع ezgif.com أو ffmpeg\n';
-  frames.forEach((f,i) => {
-    const a = document.createElement('a');
-    a.href = f; a.download = frame_${i.toString().padStart(3,'0')}.png;
+function downloadFrames(){
+  if(frames.length === 0){
+    alert('ولد الفيديو أول');
+    return;
+  }
+  for(var i=0; i<frames.length; i++){
+    var a = document.createElement('a');
+    a.href = frames[i];
+    a.download = 'frame_' + (i+1) + '.png';
     a.click();
-  });
-  alert('تم تنزيل كل الفريمات. ارفعهم في ezgif.com/maker يطلع ليك فيديو MP4');
+  }
+  alert('تم تنزيل ' + frames.length + ' صورة. ارفعهم في ezgif.com/maker عشان يبقو فيديو');
 }
+
+// ربط الأزرار بالكود - دي كانت المشكلة
+btnGen.onclick = generateVideo;
+btnDownload.onclick = downloadFrames;
+
+log('الكود محمل وجاهز ✅');
 </script>
 </body>
 </html>
