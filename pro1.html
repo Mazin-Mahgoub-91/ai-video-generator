@@ -2,145 +2,77 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>AI Video محلي 100%</title>
+<title>AI Video شغال</title>
 <style>
 body{background:#000;color:#0f0;font-family:tahoma;text-align:center;padding:15px}
-h1{color:#ff0;font-size:22px}
+textarea{width:80%;height:60px;background:#111;color:#0f0;border:2px solid #0f0;border-radius:8px;padding:8px;font-size:15px}
 button{padding:12px 25px;font-size:16px;background:#0f0;color:#000;border:none;margin:5px;cursor:pointer;border-radius:8px;font-weight:bold}
-#log{color:#0ff;margin-top:10px;font-size:14px;min-height:60px;white-space:pre-line}
-canvas{background:#111;border:3px solid #0f0;border-radius:10px;margin-top:10px}
-video{margin-top:15px;border:3px solid #ff0;border-radius:10px;max-width:640px;display:none}
-.warning{color:#ff0;font-size:13px}
+#log{color:#0ff;margin-top:10px;font-size:14px;min-height:70px;white-space:pre-line}
+video{margin-top:15px;border:3px solid #ff0;border-radius:10px;max-width:576px;display:none}
 </style>
 </head>
 <body>
-<h1>🎬 توليد فيديو محلي بـ ONNX + WebGPU</h1>
-
-<canvas id="canvas" width="512" height="512"></canvas>
+<h1>🎬 فيديو مجاني - CORS Fixed</h1>
+<textarea id="prompt">ولد سوداني بيرقص في المطر ليلاً</textarea>
 <br>
-<button id="btnLoad">1. حمل الموديل 1.5GB</button>
-<button id="btnGenerate" disabled>2. ولد الفيديو 2 ثانية</button>
-
-<div id="log">الخطوة 1: اضغط حمل الموديل وانتظر التحميل</div>
+<button id="btnGenerate">ولد الفيديو</button>
+<div id="log">اكتب البرومت واضغط</div>
 <video id="output" controls></video>
-<p class="warning">⚠️ لازم كروم 113+ وكرت شاشة داعم WebGPU. التحميل مرة واحدة بس</p>
 
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
 <script>
-// نتحقق من WebGPU
-if (!navigator.gpu) {
-  document.getElementById('log').innerText = '❌ المتصفح ما بدعم WebGPU. استخدم كروم 113+ أو إيدج 113+';
-}
+const HF_API = 'https://api-inference.huggingface.co/models/stabilityai/stable-video-diffusion-img2vid-xt';
+const TOKEN = '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';
 
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const logBox = document.getElementById('log');
-const btnLoad = document.getElementById('btnLoad');
-const btnGenerate = document.getElementById('btnGenerate');
-const videoOut = document.getElementById('output');
-
-var session = null;
-var frames = [];
-
-// نرسم صورة أولية بسيطة - دي البذرة بتاعت الفيديو
-function drawSeedImage() {
-  ctx.fillStyle = 'skyblue';
-  ctx.fillRect(0,0,512,512);
-  ctx.fillStyle = 'red';
-  ctx.beginPath();
-  ctx.arc(256, 300, 40, 0, Math.PI*2);
-  ctx.fill();
-  ctx.fillStyle = 'yellow';
-  ctx.font = 'bold 30px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText('بذرة الفيديو', 256, 100);
-}
-
-drawSeedImage();
-
-async function loadModel(){
-  btnLoad.disabled = true;
-  logBox.innerText = 'جاري تحميل الموديل 1.5GB...\nده بياخد 5-10 دقايق حسب النت\nبيتخزن في الكاش بعد كده';
-  
-  try {
-    // موديل Stable Video Diffusion مضغوط لـ ONNX
-    session = await ort.InferenceSession.create(
-      'https://huggingface.co/onnx-community/stable-video-diffusion-img2vid/resolve/main/onnx/model.onnx',
-      { 
-        executionProviders: ['webgpu'],
-        graphOptimizationLevel: 'all'
-      }
-    );
-    
-    logBox.innerText = '✅ الموديل اتحمل وجاهز!\nاضغط ولد الفيديو';
-    btnGenerate.disabled = false;
-  } catch(e) {
-    logBox.innerText = 'فشل التحميل: ' + e.message + '\nجرب كروم جديد أو غير كرت الشاشة';
-    btnLoad.disabled = false;
-  }
+function createSeedImage(prompt) {
+  var canvas = document.createElement('canvas');
+  canvas.width = 576; canvas.height = 320;
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = prompt.includes('ليل')? '#0a0a2a' : '#87CEEB';
+  ctx.fillRect(0,0,576,320);
+  ctx.fillStyle = '#ffdbac';
+  ctx.beginPath(); ctx.arc(288, 110, 22, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#00f'; ctx.fillRect(268, 132, 40, 90);
+  return canvas.toDataURL('image/png').split(',')[1];
 }
 
 async function generateVideo(){
-  btnGenerate.disabled = true;
-  frames = [];
-  logBox.innerText = 'جاري توليد 25 إطار... كل إطار بياخد 8-12 ثانية';
-  
-  // نحول الكانفاس لصورة
-  var imgData = ctx.getImageData(0,0,512,512);
-  
-  // هنا بنشغل الموديل إطار إطار
-  // ملاحظة: ده كود مبسط. الموديل الحقي داير تجهيز tensors معقد
-  // عشان كده بنستخدم مكتبة جاهزة
-  
-  for(let i=0; i<25; i++){
-    // محاكاة: نحرك الكرة شوية عشان تشوف حركة
-    ctx.clearRect(0,0,512,512);
-    ctx.fillStyle = 'skyblue';
-    ctx.fillRect(0,0,512,512);
-    ctx.fillStyle = 'red';
-    ctx.beginPath();
-    ctx.arc(256 + Math.sin(i*0.3)*100, 300 + Math.cos(i*0.3)*50, 40, 0, Math.PI*2);
-    ctx.fill();
-    ctx.fillStyle = 'yellow';
-    ctx.font = 'bold 30px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('إطار ' + i, 256, 100);
-    
-    frames.push(canvas.toDataURL('image/jpeg', 0.8));
-    logBox.innerText = 'تم إطار ' + (i+1) + ' من 25\nانتظر...';
-    
-    await new Promise(r => setTimeout(r, 100)); // عشان الواجهة ما تعلق
-  }
-  
-  // نحول الإطارات لفيديو WebM محلي
-  var stream = canvas.captureStream(8);
-  var recorder = new MediaRecorder(stream, {mimeType: 'video/webm;codecs=vp9'});
-  var chunks = [];
-  
-  recorder.ondataavailable = e => chunks.push(e.data);
-  recorder.onstop = () => {
-    var blob = new Blob(chunks, {type: 'video/webm'});
+  var prompt = document.getElementById('prompt').value;
+  var logBox = document.getElementById('log');
+  var videoOut = document.getElementById('output');
+
+  document.getElementById('btnGenerate').disabled = true;
+  logBox.innerText = 'جاري التوليد عبر الـ Proxy...\nانتظر 50 ثانية';
+
+  try {
+    var seedImage = createSeedImage(prompt);
+    var proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(HF_API);
+
+    var response = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + TOKEN,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        inputs: seedImage,
+        parameters: {prompt: prompt, num_frames: 25, fps: 8, motion_bucket_id: 127, cond_aug: 0.02}
+      })
+    });
+
+    if(!response.ok) throw new Error('خطأ ' + response.status);
+
+    var blob = await response.blob();
     videoOut.src = URL.createObjectURL(blob);
     videoOut.style.display = 'block';
-    logBox.innerText = '✅ الفيديو جاهز! مجاني 100% بدون نت';
-  };
-  
-  recorder.start();
-  // نعرض الإطارات بسرعة عشان تتسجل
-  for(let f of frames){
-    var img = new Image();
-    img.src = f;
-    await img.decode();
-    ctx.drawImage(img, 0,0);
-    await new Promise(r => setTimeout(r, 125)); // 8fps
+    logBox.innerText = '✅ الفيديو جاهز!';
+
+  } catch(e) {
+    logBox.innerText = '❌ فشل: ' + e.message + '\nجرب الحل 2 لو ما ظبط';
   }
-  recorder.stop();
-  
-  btnGenerate.disabled = false;
+  document.getElementById('btnGenerate').disabled = false;
 }
 
-btnLoad.onclick = loadModel;
-btnGenerate.onclick = generateVideo;
+document.getElementById('btnGenerate').onclick = generateVideo;
 </script>
 </body>
 </html>
