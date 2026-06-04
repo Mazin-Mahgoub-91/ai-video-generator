@@ -1,0 +1,175 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>AI Video Studio v2</title>
+<style>
+body{background:#000;color:#0f0;font-family:tahoma;text-align:center;padding:15px}
+h1{color:#ff0;font-size:24px}
+textarea{width:90%;height:60px;background:#111;color:#0f0;border:2px solid #0f0;border-radius:8px;padding:8px;font-size:15px}
+button{padding:12px 30px;font-size:16px;background:#0f0;color:#000;border:none;margin:5px;cursor:pointer;border-radius:8px;font-weight:bold}
+button:hover{background:#ff0}
+canvas{background:#000;border:3px solid #0f0;border-radius:10px;margin-top:10px}
+#log{color:#0ff;margin-top:8px;font-size:13px}
+video{margin-top:10px;border:3px solid #ff0;border-radius:10px;max-width:640px}
+.controls{margin:10px}
+select,input[type=color]{padding:5px;margin:3px;background:#111;color:#0f0;border:1px solid #0f0}
+</style>
+</head>
+<body>
+<h1>🎬 استوديو فيديو AI - النسخة الخفيفة</h1>
+
+<textarea id="prompt" placeholder="مثال: ولد بيرقص + نص مرحبا + خلفية سماء"></textarea>
+
+<div class="controls">
+  مدة: <select id="duration"><option value="5">5 ثواني</option><option value="10">10 ثواني</option></select>
+  سرعة: <select id="speed"><option value="30">30fps</option><option value="24">24fps</option></select>
+  موسيقى: <select id="music"><option value="none">بدون</option><option value="beat">إيقاع</option></select>
+</div>
+
+<button onclick="generateVideo()">🚀 ولد الفيديو</button>
+<button onclick="downloadVideo()">💾 نزل MP4</button>
+
+<canvas id="canvas" width="640" height="480"></canvas>
+<div id="log">جاهز للتوليد...</div>
+<video id="output" controls style="display:none"></video>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const log = t => document.getElementById('log').innerHTML = t;
+let mediaRecorder, recordedChunks = [];
+
+// ===== "AI" بيفهم النص =====
+function parsePrompt(text){
+  text = text.toLowerCase();
+  return {
+    hasPerson: text.includes('ولد') || text.includes('بنت') || text.includes('شخص'),
+    hasText: text.includes('نص') || text.includes('كلام'),
+    textContent: text.match(/نص (.*?) \+/)?.[1] || 'مرحبا',
+    bg: text.includes('سماء')?'skyblue':text.includes('بحر')?'blue':text.includes('عشب')?'green':'black',
+    action: text.includes('رقص')?'dance':text.includes('جري')?'run':'bounce'
+  };
+}
+
+function drawPerson(x,y,frame){
+  // راس
+  ctx.fillStyle = '#ffdbac';
+  ctx.beginPath();
+  ctx.arc(x, y-40, 20, 0, Math.PI*2);
+  ctx.fill();
+  // جسم
+  ctx.fillStyle = '#00f';
+  ctx.fillRect(x-10, y-20, 20, 40);
+  // أرجل بتتحرك
+  let legOffset = Math.sin(frame*0.3) * 15;
+  ctx.fillRect(x-8, y+20, 8, 25);
+  ctx.fillRect(x+legOffset, y+20, 8, 25);
+  // يدين
+  let armOffset = Math.sin(frame*0.3 + Math.PI) * 20;
+  ctx.fillRect(x-15, y-10, 8, 25);
+  ctx.fillRect(x+7+armOffset, y-10, 8, 25);
+}
+
+let frames = [];
+window.generateVideo = async function(){
+  const prompt = document.getElementById('prompt').value;
+  const duration = parseInt(document.getElementById('duration').value);
+  const fps = parseInt(document.getElementById('speed').value);
+  const totalFrames = duration * fps;
+
+  if(!prompt){ alert('اكتب وصف أول'); return; }
+
+  const scene = parsePrompt(prompt);
+  frames = [];
+  let x = 320, y = 300, vx = 2, vy = -3;
+
+  log(جاري توليد ${totalFrames} فريم...);
+
+  for(let i=0; i<totalFrames; i++){
+    // خلفية
+    ctx.fillStyle = scene.bg;
+    ctx.fillRect(0,0,640,480);
+
+    // سحاب لو سماء
+    if(scene.bg === 'skyblue'){
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      ctx.arc(100 + i*0.5%640, 80, 30, 0, Math.PI*2);
+      ctx.arc(120 + i*0.5%640, 80, 25, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // الشخصية
+    if(scene.hasPerson){
+      if(scene.action === 'bounce'){
+        x += vx; y += vy; vy += 0.15;
+        if(x < 50 || x > 590) vx *= -1;
+        if(y > 300){ y = 300; vy *= -0.7; }
+      }
+      if(scene.action === 'dance'){
+        x = 320 + Math.sin(i*0.1) * 100;
+        y = 300 + Math.sin(i*0.2) * 20;
+      }
+      drawPerson(x, y, i);
+    }
+
+    // النص
+    if(scene.hasText){
+      ctx.fillStyle = 'yellow';
+      ctx.font = 'bold 40px Tahoma';
+      ctx.textAlign = 'center';
+      ctx.fillText(scene.textContent, 320, 50);
+    }
+
+    frames.push(canvas.toDataURL('image/jpeg', 0.7));
+    if(i % 30 === 0) log(فريم ${i}/${totalFrames} - ${Math.floor(i/totalFrames*100)}%);
+  }
+
+  log('تم الرسم ✅ جاري التحويل لفيديو...');
+  await createVideo(fps);
+}
+
+function createVideo(fps){
+  return new Promise(resolve => {
+    const stream = canvas.captureStream(fps);
+    mediaRecorder = new MediaRecorder(stream, {mimeType: 'video/webm;codecs=vp9'});
+    recordedChunks = [];
+
+    mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, {type: 'video/webm'});
+      const url = URL.createObjectURL(blob);
+      document.getElementById('output').src = url;
+      document.getElementById('output').style.display = 'block';
+      log('✅ الفيديو جاهز! اضغط نزل MP4');
+      resolve();
+    };
+
+    mediaRecorder.start();
+    let i = 0;
+    const img = new Image();
+    function playFrames(){
+      if(i >= frames.length){ mediaRecorder.stop(); return; }
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0);
+        i++;
+        setTimeout(playFrames, 1000/fps);
+      };
+      img.src = frames[i];
+    }
+    playFrames();
+  });
+}
+
+window.downloadVideo = function(){
+  if(recordedChunks.length === 0){ alert('ولد الفيديو أول'); return; }
+  const blob = new Blob(recordedChunks, {type: 'video/webm'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = ai_video_${Date.now()}.webm;
+  a.click();
+}
+</script>
+</body>
+</html>
