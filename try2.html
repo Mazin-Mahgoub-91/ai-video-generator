@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>AI Video Generator Fixed</title>
+<title>AI Video MP4 Generator</title>
 <style>
 body{background:#000;color:#0f0;font-family:tahoma;text-align:center;padding:15px}
 h1{color:#ff0;font-size:22px}
@@ -10,20 +10,20 @@ textarea{width:90%;height:60px;background:#111;color:#0f0;border:2px solid #0f0;
 button{padding:12px 25px;font-size:16px;background:#0f0;color:#000;border:none;margin:5px;cursor:pointer;border-radius:8px;font-weight:bold}
 canvas{background:#000;border:3px solid #0f0;border-radius:10px;margin-top:10px;max-width:100%}
 #log{color:#0ff;margin-top:8px;font-size:13px}
-#preview{margin-top:10px}
+video{margin-top:10px;border:3px solid #ff0;border-radius:10px;max-width:640px;display:none}
 </style>
 </head>
 <body>
-<h1>🎬 مولد فيديو - نسخة ثابتة</h1>
+<h1>🎬 مولد فيديو MP4 - نسخة ثابتة</h1>
 
-<textarea id="prompt" placeholder="اكتب هنا: كرة حمراء بتنط + نص مرحبا"></textarea>
+<textarea id="prompt" placeholder="جرب: كرة حمراء بتنط في سماء + نص قون"></textarea>
 <br>
-<button id="btnGen">ولد الفيديو</button>
-<button id="btnDownload">نزل الفريمات</button>
+<button id="btnGen">ولد الفيديو 3 ثواني</button>
+<button id="btnDownload" style="display:none">نزل MP4</button>
 
-<canvas id="canvas" width="640" height="480"></canvas>
+<canvas id="canvas" width="640" height="360"></canvas>
 <div id="log">جاهز...</div>
-<div id="preview"></div>
+<video id="output" controls></video>
 
 <script>
 const canvas = document.getElementById('canvas');
@@ -31,97 +31,154 @@ const ctx = canvas.getContext('2d');
 const logBox = document.getElementById('log');
 const btnGen = document.getElementById('btnGen');
 const btnDownload = document.getElementById('btnDownload');
+const videoOut = document.getElementById('output');
 
-function log(msg){
-  logBox.innerHTML = msg;
-}
+var mediaRecorder;
+var recordedChunks = [];
+var isRecording = false;
+
+function log(msg){ logBox.innerHTML = msg; }
 
 function parsePrompt(text){
   text = text.toLowerCase();
-  return {
-    hasPerson: text.indexOf('ولد') > -1 || text.indexOf('بنت') > -1,
-    hasText: text.indexOf('نص') > -1,
-    bg: text.indexOf('سماء') > -1? 'skyblue' : text.indexOf('بحر') > -1? 'blue' : 'black'
-  };
+  var scene = {bg: 'black', objects: [], text: ''};
+
+  if(text.indexOf('سماء') > -1) scene.bg = 'skyblue';
+  else if(text.indexOf('بحر') > -1) scene.bg = 'blue';
+  else if(text.indexOf('عشب') > -1 || text.indexOf('ملعب') > -1) scene.bg = 'green';
+
+  if(text.indexOf('ولد') > -1 || text.indexOf('بنت') > -1) scene.objects.push('person');
+  if(text.indexOf('كرة') > -1) scene.objects.push('ball');
+  if(text.indexOf('مربع') > -1) scene.objects.push('box');
+
+  if(text.indexOf('نص') > -1){
+    var match = text.match(/نص (.*?)( |$|\+)/);
+    scene.text = match? match[1] : '';
+  }
+  return scene;
 }
 
 function drawPerson(x, y, frame){
   ctx.fillStyle = '#ffdbac';
-  ctx.beginPath();
-  ctx.arc(x, y-40, 20, 0, Math.PI*2);
-  ctx.fill();
-  ctx.fillStyle = '#00f';
-  ctx.fillRect(x-10, y-20, 20, 40);
-  var leg = Math.sin(frame*0.3) * 15;
-  ctx.fillRect(x-8, y+20, 8, 25);
-  ctx.fillRect(x+leg, y+20, 8, 25);
+  ctx.beginPath(); ctx.arc(x, y-30, 15, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#00f'; ctx.fillRect(x-8, y-15, 16, 30);
+  var leg = Math.sin(frame*0.4) * 12;
+  ctx.fillRect(x-6, y+15, 6, 20); ctx.fillRect(x+leg, y+15, 6, 20);
 }
-
-var frames = [];
 
 function generateVideo(){
   var prompt = document.getElementById('prompt').value;
-  if(prompt === ''){
-    alert('اكتب وصف أول');
-    return;
-  }
+  if(prompt === ''){ alert('اكتب وصف أول'); return; }
+
+  btnGen.disabled = true;
+  btnDownload.style.display = 'none';
+  videoOut.style.display = 'none';
+  recordedChunks = [];
 
   var scene = parsePrompt(prompt);
-  frames = [];
-  var x = 320, y = 300, vx = 2, vy = -3;
+  var fps = 30;
+  var duration = 3; // 3 ثواني
+  var totalFrames = fps * duration;
+  var frame = 0;
 
-  log('جاري توليد 60 فريم...');
+  log('جاري التسجيل... 0%');
 
-  for(var i=0; i<60; i++){
-    ctx.fillStyle = scene.bg;
-    ctx.fillRect(0,0,640,480);
+  // نبدأ التسجيل
+  var stream = canvas.captureStream(fps);
+  try{
+    mediaRecorder = new MediaRecorder(stream, {mimeType: 'video/webm;codecs=vp9'});
+  }catch(e){
+    mediaRecorder = new MediaRecorder(stream, {mimeType: 'video/webm'});
+  }
 
-    if(scene.hasPerson){
-      x = x + vx;
-      y = y + vy;
-      vy = vy + 0.15;
-      if(x < 50 || x > 590) vx = vx * -1;
-      if(y > 300){ y = 300; vy = vy * -0.7; }
-      drawPerson(x, y, i);
+  mediaRecorder.ondataavailable = function(e){
+    if(e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  mediaRecorder.onstop = function(){
+    var blob = new Blob(recordedChunks, {type: 'video/webm'});
+    var url = URL.createObjectURL(blob);
+    videoOut.src = url;
+    videoOut.style.display = 'block';
+    btnDownload.style.display = 'inline-block';
+    log('✅ تم التوليد! الفيديو جاهز');
+    btnGen.disabled = false;
+  };
+
+  mediaRecorder.start();
+  isRecording = true;
+
+  // اللوب بتاع الرسم
+  var x = 320, y = 250, vx = 3, vy = -5;
+
+  function drawFrame(){
+    if(frame >= totalFrames){
+      mediaRecorder.stop();
+      isRecording = false;
+      return;
     }
 
-    if(scene.hasText){
+    // خلفية
+    if(scene.bg === 'skyblue'){
+      ctx.fillStyle = 'skyblue'; ctx.fillRect(0,0,640,360);
+      ctx.fillStyle = 'white';
+      ctx.beginPath(); ctx.arc(100 + frame*0.5, 60, 25, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(125 + frame*0.5, 60, 20, 0, Math.PI*2); ctx.fill();
+    } else {
+      ctx.fillStyle = scene.bg; ctx.fillRect(0,0,640,360);
+    }
+
+    // الأشياء
+    for(var j=0; j<scene.objects.length; j++){
+      if(scene.objects[j] === 'person'){
+        drawPerson(320, 250 + Math.sin(frame*0.2)*15, frame);
+      }
+      if(scene.objects[j] === 'ball'){
+        x = x + vx;
+        y = y + vy;
+        vy = vy + 0.2;
+        if(x < 30 || x > 610) vx = vx * -1;
+        if(y > 330){ y = 330; vy = vy * -0.8; }
+        ctx.fillStyle = 'red';
+        ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI*2); ctx.fill();
+      }
+      if(scene.objects[j] === 'box'){
+        ctx.fillStyle = 'orange';
+        ctx.fillRect(320-25, 250-25, 50, 50);
+      }
+    }
+
+    // النص
+    if(scene.text!== ''){
       ctx.fillStyle = 'yellow';
-      ctx.font = 'bold 40px Tahoma';
+      ctx.font = 'bold 35px Tahoma';
       ctx.textAlign = 'center';
-      ctx.fillText('مرحبا', 320, 50);
+      ctx.fillText(scene.text, 320, 40);
     }
 
-    frames.push(canvas.toDataURL('image/png'));
+    frame++;
+    if(frame % 10 === 0) log('جاري التسجيل... ' + Math.floor(frame/totalFrames*100) + '%');
 
-    if(i % 10 === 0){
-      log('فريم ' + i + '/60 - ' + Math.floor(i/60*100) + '%');
-    }
+    setTimeout(drawFrame, 1000/fps);
   }
 
-  log('تم التوليد ✅ المعاينة تحت');
-  document.getElementById('preview').innerHTML = '<img src="' + frames[0] + '" width="320">';
+  drawFrame();
 }
 
-function downloadFrames(){
-  if(frames.length === 0){
-    alert('ولد الفيديو أول');
-    return;
-  }
-  for(var i=0; i<frames.length; i++){
-    var a = document.createElement('a');
-    a.href = frames[i];
-    a.download = 'frame_' + (i+1) + '.png';
-    a.click();
-  }
-  alert('تم تنزيل ' + frames.length + ' صورة. ارفعهم في ezgif.com/maker عشان يبقو فيديو');
+function downloadVideo(){
+  if(recordedChunks.length === 0){ alert('ولد الفيديو أول'); return; }
+  var blob = new Blob(recordedChunks, {type: 'video/webm'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ai_video_' + Date.now() + '.webm';
+  a.click();
+  log('تم التنزيل. ملاحظة: ده WebM. لو دايرو MP4 ارفعو في cloudconvert.com مجاني');
 }
 
-// ربط الأزرار بالكود - دي كانت المشكلة
 btnGen.onclick = generateVideo;
-btnDownload.onclick = downloadFrames;
+btnDownload.onclick = downloadVideo;
 
-log('الكود محمل وجاهز ✅');
+log('الكود جاهز ✅ جرب: كرة حمراء بتنط في سماء');
 </script>
 </body>
 </html>
