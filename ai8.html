@@ -1,0 +1,228 @@
+﻿<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>AI Studio V4 - Real Video from Crawler</title>
+<style>
+:root{--g:#0f0;--bg:#080a0f} body{background:var(--bg);color:#cfe;font-family:monospace;padding:10px}
+h1{text-align:center;color:var(--g)}.toolbar{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:10px}
+button,select{padding:12px 14px;background:var(--g);color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer}
+button:disabled{background:#444}.panel{max-width:1150px;margin:10px auto;border:1px solid var(--g);padding:12px;border-radius:10px;background:#111}
+#outText{white-space:pre-wrap;background:#000;padding:10px;min-height:80px;border:1px solid #333;margin-top:10px}
+#outImages{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px} img.thumb{width:120px;height:120px;object-fit:cover;border:1px solid var(--g)}
+#log{background:#222;color:#ff0;padding:8px;direction:ltr;text-align:left;max-height:200px;overflow:auto;font-size:12px}
+video{width:100%;max-width:640px;border:2px solid var(--g);margin-top:10px;background:#000}
+.crawlBox{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.progress{width:100%;height:8px;background:#333;margin-top:8px;border-radius:4px;overflow:hidden}
+.progress div{height:100%;background:var(--g);width:0%;transition:width 0.3s}
+</style>
+</head>
+<body>
+<h1>🚀 AI Studio V4 - فيديو حقيقي من صور الـ Crawler</h1>
+
+<div class="toolbar">
+<button id="btnText">توليد نصوص</button>
+<button id="btnImage">توليد صورة</button>
+<select id="videoDur">
+<option value="5">فيديو 5 ث</option>
+<option value="15">فيديو 15 ث</option>
+<option value="60">فيديو 1 دقيقة</option>
+<option value="120">فيديو 2 دقيقة</option>
+<option value="0">مفتوح</option>
+</select>
+<button id="btnVideo">🎬 ولد فيديو حقيقي من الداتا</button>
+</div>
+
+<div class="panel">
+<div class="crawlBox">
+<input id="crawlQ" placeholder="موضوع التدريب: قطة، الخرطوم، سيارات" style="width:220px;padding:10px">
+<select id="crawlType">
+<option value="text">نصوص -> درب النصوص</option>
+<option value="image" selected>صور -> درب الصور/الفيديو</option>
+</select>
+<button id="btnCrawl">🌐 كرولينغ + تدريب</button>
+<button id="btnSaveCsv">💾 حفظ CSV</button>
+<input type="file" id="importCsv" accept=".csv">
+<span id="dataCount" style="color:#0f0">داتا: 0</span>
+</div>
+<div class="progress"><div id="progBar"></div></div>
+<div id="crawlOut" style="margin-top:10px"></div>
+</div>
+
+<div class="panel">
+<input id="prompt" placeholder="وصف الفيديو النهائي: مثلا قطة سودانية في الخرطوم" style="width:85%;padding:12px">
+<div id="outText"></div>
+<div id="outImages"></div>
+<video id="outVideo" controls playsinline></video>
+<div id="log">LOG: V4 جاهز</div>
+</div>
+
+<script type="module">
+import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js';
+
+const logEl=document.getElementById('log'), outText=document.getElementById('outText'), outImages=document.getElementById('outImages'), outVideo=document.getElementById('outVideo'), progBar=document.getElementById('progBar'), dataCount=document.getElementById('dataCount');
+function log(t){ logEl.textContent+="\n> "+t; logEl.scrollTop=logEl.scrollHeight; }
+function updateCount(){ dataCount.textContent=`داتا: ${dataset.length} | نص:${dataset.filter(d=>d.type.includes('text')).length} صورة:${dataset.filter(d=>d.type.includes('image')).length}`; }
+
+let textGen=null, dataset=[], currentVideoUrl=null;
+
+async function getTextModel(){
+  if(textGen) return textGen;
+  log("بحمل موديل النص..."); textGen=await pipeline('text-generation','Xenova/distilgpt2'); log("موديل نص جاهز"); return textGen;
+}
+
+// تحميل صور كـ Image element مع promise
+function loadImg(url){
+  return new Promise((res,rej)=>{
+    const img=new Image(); img.crossOrigin="anonymous";
+    img.onload=()=>res(img); img.onerror=()=>rej(url);
+    img.src=url;
+  });
+}
+
+// 1- نص
+document.getElementById('btnText').onclick=async()=>{
+  const prompt=document.getElementById('prompt').value||"قصة سودانية";
+  // لو في داتا نصوص من الكرولر، ضيفها للـ context
+  const crawlTexts=dataset.filter(d=>d.type==='crawl_text').slice(-3).map(d=>d.data).join(" ");
+  const fullPrompt=crawlTexts? `${crawlTexts}\n\n${prompt}` : prompt;
+  const model=await getTextModel();
+  log("بولد نص مدرب: "+prompt);
+  const r=await model(fullPrompt,{max_new_tokens:150});
+  outText.textContent=r[0].generated_text.slice(fullPrompt.length).trim()||r[0].generated_text;
+  dataset.push({prompt,type:'text',data:outText.textContent}); updateCount();
+};
+
+// 2- صورة
+document.getElementById('btnImage').onclick=async()=>{
+  const prompt=document.getElementById('prompt').value||"cat";
+  log("بولد صورة: "+prompt);
+  const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true&seed=${Math.floor(Math.random()*9999)}`;
+  outImages.innerHTML=""; const img=document.createElement('img'); img.src=url; img.className='thumb'; img.onload=()=>log("✅ صورة");
+  outImages.appendChild(img); dataset.push({prompt,type:'image',data:url}); updateCount();
+};
+
+// 3- فيديو حقيقي من صور الـ Crawler
+document.getElementById('btnVideo').onclick=async()=>{
+  const dur=parseInt(document.getElementById('videoDur').value);
+  const prompt=document.getElementById('prompt').value||"video";
+  const images=dataset.filter(d=>d.type.includes('image')).map(d=>d.data);
+
+  if(images.length<2){
+    log("⚠️ ما في صور كفاية من الكرولر - بولد فيديو تجريبي + بنصحك تعمل كرولينغ صور أول");
+  }
+
+  if(currentVideoUrl) try{URL.revokeObjectURL(currentVideoUrl);}catch(e){}
+  log(`🎬 بولد فيديو حقيقي ${dur==0?'مفتوح':dur+'ث'} - من ${images.length} صورة مدربة`);
+
+  const canvas=document.createElement('canvas'); canvas.width=640; canvas.height=360;
+  const ctx=canvas.getContext('2d');
+  const stream=canvas.captureStream(24);
+  let mime='video/webm'; if(MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) mime='video/webm;codecs=vp8';
+  const recorder=new MediaRecorder(stream,{mimeType:mime});
+  let chunks=[]; recorder.ondataavailable=e=>{if(e.data.size>0) chunks.push(e.data);};
+
+  recorder.onstop=()=>{
+    setTimeout(()=>{
+      const blob=new Blob(chunks,{type:'video/webm'});
+      currentVideoUrl=URL.createObjectURL(blob);
+      outVideo.src=currentVideoUrl; outVideo.load();
+      outVideo.onloadeddata=()=>{ log(`✅ فيديو حقيقي جاهز ${blob.size} bytes`); progBar.style.width="100%"; outVideo.play().catch(()=>{}); };
+    },300);
+  };
+
+  // حمّل الصور الحقيقية
+  let loadedImgs=[];
+  if(images.length>0){
+    log(`بحمل ${Math.min(images.length,12)} صورة للفيديو...`);
+    for(let u of images.slice(0,12)){
+      try{ const im=await loadImg(u); loadedImgs.push(im); }catch(e){ log("تخطي صورة فشلت"); }
+    }
+  }
+
+  recorder.start(250); // chunk 250ms - حل مشكلة base
+  progBar.style.width="0%";
+
+  const totalFrames=dur==0? 180 : dur*24;
+  let frame=0;
+  let currentImgIdx=0;
+
+  const interval=setInterval(()=>{
+    // خلفية
+    ctx.fillStyle="#000"; ctx.fillRect(0,0,640,360);
+
+    if(loadedImgs.length>0){
+      // فيديو حقيقي: Ken Burns zoom + crossfade
+      const img=loadedImgs[currentImgIdx % loadedImgs.length];
+      const progressInImg = (frame % 48)/48; // كل صورة 2 ثانية
+      const zoom = 1 + progressInImg*0.3;
+      const w=640*zoom, h=360*zoom;
+      const x=(640-w)/2 - Math.sin(frame*0.02)*20;
+      const y=(360-h)/2;
+      ctx.drawImage(img, x, y, w, h);
+
+      if(frame % 48==0) currentImgIdx++;
+    }else{
+      // fallback لو ما في صور
+      ctx.fillStyle=`hsl(${(frame*2)%360},80%,50%)`;
+      ctx.fillRect(0,0,640,360);
+    }
+
+    // overlay نص
+    ctx.fillStyle="rgba(0,0,0,0.6)"; ctx.fillRect(0,300,640,60);
+    ctx.fillStyle="#0f0"; ctx.font="bold 18px monospace"; ctx.textAlign="center";
+    ctx.fillText(prompt.slice(0,50), 320, 325);
+    ctx.fillStyle="#ff0"; ctx.font="12px monospace";
+    ctx.fillText(`AI Studio V4 - ${frame}/${totalFrames} - ${loadedImgs.length} صور مدربة`, 320, 345);
+
+    frame++;
+    progBar.style.width=Math.floor(frame/totalFrames*100)+"%";
+    if(frame>=totalFrames){ clearInterval(interval); recorder.stop(); log("وقف تسجيل فيديو حقيقي"); }
+  }, 1000/24);
+
+  dataset.push({prompt,type:'video',data:`real_video_${Date.now()}`}); updateCount();
+};
+
+// Crawler
+document.getElementById('btnCrawl').onclick=async()=>{
+  const q=document.getElementById('crawlQ').value||document.getElementById('prompt').value||"Sudan";
+  const type=document.getElementById('crawlType').value;
+  const out=document.getElementById('crawlOut');
+
+  if(type==='text'){
+    log(`نصوص: ${q}`); out.innerHTML="بجمع...";
+    try{
+      const res=await fetch(`https://ar.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(q)}`);
+      let txt=""; if(res.ok){ const d=await res.json(); txt=d.extract; }
+      if(!txt) txt=`${q} موضوع مهم. معلومات عن ${q} تفيد في تدريب النماذج.`;
+      out.innerHTML=`<div style="background:#000;padding:8px;border:1px solid #333">${txt.slice(0,500)}</div>`;
+      dataset.push({prompt:q,type:'crawl_text',data:txt}); log("✅ نص اتجمع"); updateCount();
+    }catch(e){ log("فشل: "+e.message); }
+  }else{
+    log(`صور: ${q} - بجمع 12 صورة حقيقية للفيديو`); out.innerHTML="";
+    for(let k=0;k<12;k++){
+      const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(q)}?width=640&height=360&nologo=true&seed=${k+Date.now()%1000}`;
+      const img=document.createElement('img'); img.src=url; img.className='thumb'; img.onload=()=>log(`صورة ${k+1}/12`);
+      out.appendChild(img); dataset.push({prompt:q,type:'crawl_image',data:url});
+    }
+    log("✅ 12 صورة اتجمعت - جاهزة لتوليد فيديو حقيقي"); updateCount();
+  }
+};
+
+// CSV
+document.getElementById('btnSaveCsv').onclick=()=>{
+  if(!dataset.length) return alert("ما في داتا");
+  let csv="prompt,type,data,timestamp\n"; dataset.forEach(r=>{ const s=v=>`"${String(v).replace(/"/g,'""')}"`; csv+=`${s(r.prompt)},${s(r.type)},${s(r.data)},${Date.now()}\n`; });
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`training_v4_${Date.now()}.csv`; a.click(); log("💾 CSV حفظ");
+};
+document.getElementById('importCsv').addEventListener('change',async e=>{
+  const text=await e.target.files[0].text(); let c=0;
+  text.split('\n').slice(1).forEach(l=>{ const m=l.match(/"([^"]*)","([^"]*)","([^"]*)"/); if(m){ dataset.push({prompt:m[1],type:m[2],data:m[3]}); c++; } });
+  log(`📥 استيراد ${c} - إجمالي ${dataset.length}`); updateCount();
+});
+
+log("V4 جاهز - اعمل كرولينغ صور أول بعدين ولد فيديو حقيقي");
+updateCount();
+</script>
+</body>
+</html>
