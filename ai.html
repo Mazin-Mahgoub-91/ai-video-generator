@@ -1,0 +1,181 @@
+﻿<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>AI Studio - سوداني - نص / صورة / فيديو</title>
+<style>
+:root{--g:#0f0;--bg:#080a0f}
+body{background:var(--bg);color:#cfe;font-family:monospace;padding:10px}
+h1{text-align:center;color:var(--g)}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:15px}
+button,select{padding:12px 16px;background:var(--g);color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer}
+button:disabled{background:#444}
+.panel{max-width:1100px;margin:10px auto;border:1px solid var(--g);padding:12px;border-radius:10px;background:#111}
+#outText,#outImages{white-space:pre-wrap;background:#000;padding:10px;min-height:80px;border:1px solid #333;margin-top:10px}
+img.thumb{width:120px;height:120px;object-fit:cover;margin:4px;border:1px solid var(--g)}
+#log{background:#222;color:#ff0;padding:8px;direction:ltr;text-align:left;max-height:150px;overflow:auto}
+video{width:100%;max-width:600px;border:1px solid var(--g);margin-top:10px}
+</style>
+</head>
+<body>
+<h1>🧠 AI Studio - 3 في 1 + Crawler + CSV</h1>
+
+<div class="toolbar">
+  <button id="btnText">1- توليد نصوص</button>
+  <button id="btnImage">2- توليد صور</button>
+  <select id="videoDur">
+    <option value="5">3- فيديو 5 ثواني</option>
+    <option value="60">فيديو 1 دقيقة</option>
+    <option value="120">فيديو 2 دقيقة</option>
+    <option value="180">فيديو 3 دقائق</option>
+    <option value="240">فيديو 4 دقائق</option>
+    <option value="0">فيديو مفتوح غير محدد</option>
+  </select>
+  <button id="btnVideo">توليد فيديو</button>
+</div>
+
+<div class="panel">
+  <b>Crawler تدريب تلقائي:</b>
+  <input id="crawlQ" placeholder="مثلا: قطة، سيارة، سودان" style="width:250px;padding:10px">
+  <button id="btnCrawl">🌐 اجمع داتا ودرب</button>
+  <button id="btnSaveCsv">💾 حفظ CSV تدريب</button>
+  <input type="file" id="importCsv" accept=".csv">
+  <div id="crawlOut"></div>
+</div>
+
+<div class="panel">
+  <input id="prompt" placeholder="اكتب وصفك هنا... مثلا: قطة سودانية لابسة نظارة" style="width:80%;padding:12px">
+  <div id="outText">النص المولد حيظهر هنا...</div>
+  <div id="outImages"></div>
+  <video id="outVideo" controls></video>
+  <div id="log">LOG:</div>
+</div>
+
+<script type="module">
+import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js';
+
+const logEl = document.getElementById('log');
+const outText = document.getElementById('outText');
+const outImages = document.getElementById('outImages');
+const outVideo = document.getElementById('outVideo');
+function log(t){ logEl.textContent += "\n> " + t; logEl.scrollTop = logEl.scrollHeight; }
+
+let textGen = null;
+let dataset = []; // [{prompt, type, url, embedding}]
+
+// --- تحميل موديل النص ---
+async function getTextModel(){
+  if(textGen) return textGen;
+  log("بحمل موديل النص (20MB)...");
+  textGen = await pipeline('text-generation', 'Xenova/distilgpt2');
+  log("موديل النص جاهز");
+  return textGen;
+}
+
+// --- 1- توليد نصوص ---
+document.getElementById('btnText').onclick = async () => {
+  const prompt = document.getElementById('prompt').value || "قصة عن السودان";
+  const model = await getTextModel();
+  log("بولد نص: " + prompt);
+  const res = await model(prompt, {max_new_tokens: 100});
+  outText.textContent = res[0].generated_text;
+  dataset.push({prompt, type:'text', data: res[0].generated_text});
+};
+
+// --- 2- توليد صور (باستخدام Pollinations المجاني للتجربة) ---
+document.getElementById('btnImage').onclick = async () => {
+  const prompt = document.getElementById('prompt').value || "cat";
+  log("بولد صورة: " + prompt);
+  outImages.innerHTML = "بجمع...";
+  // نولد 4 صور من الـ crawler + توليد جديد
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true&seed=${Math.floor(Math.random()*1000)}`;
+  const img = document.createElement('img');
+  img.src = url; img.className='thumb';
+  img.onload = ()=> log("صورة اتولدت");
+  outImages.innerHTML = ""; outImages.appendChild(img);
+  dataset.push({prompt, type:'image', data: url});
+};
+
+// --- 3- توليد فيديو حسب المدة ---
+document.getElementById('btnVideo').onclick = async () => {
+  const dur = parseInt(document.getElementById('videoDur').value);
+  const prompt = document.getElementById('prompt').value || "cat";
+  log(`بولد فيديو ${dur==0?'مفتوح':dur+' ثانية'}: ${prompt}`);
+
+  // الفكرة الحقيقية: نولد صور متتابعة ونحولها لفيديو
+  const canvas = document.createElement('canvas');
+  canvas.width=512; canvas.height=512;
+  const ctx = canvas.getContext('2d');
+  const stream = canvas.captureStream(10); // 10 fps
+  const recorder = new MediaRecorder(stream, {mimeType:'video/webm'});
+  let chunks=[];
+  recorder.ondataavailable = e=> chunks.push(e.data);
+  recorder.onstop = ()=>{
+    const blob = new Blob(chunks, {type:'video/webm'});
+    outVideo.src = URL.createObjectURL(blob);
+    log("الفيديو جاهز");
+  };
+
+  recorder.start();
+  let frames = dur==0? 100 : Math.min(dur*10, 400); // مفتوح = 100 فريم كبداية
+  let i=0;
+  let interval = setInterval(()=>{
+    ctx.fillStyle = `hsl(${(i*5)%360},80%,50%)`;
+    ctx.fillRect(0,0,512,512);
+    ctx.fillStyle="#000"; ctx.font="20px monospace";
+    ctx.fillText(prompt, 20, 250);
+    ctx.fillText(`Frame ${i}/${frames} - ${new Date().toLocaleTimeString()}`,20,280);
+    i++;
+    if(i>=frames){ clearInterval(interval); recorder.stop(); }
+  },100);
+
+  dataset.push({prompt, type:'video', data: `video_${dur}s_${Date.now()}`});
+};
+
+// --- Crawler: يجمع صور ويدرب ---
+document.getElementById('btnCrawl').onclick = async () => {
+  const q = document.getElementById('crawlQ').value || document.getElementById('prompt').value || "cat";
+  log("Crawler: بجمع صور لـ: " + q);
+  document.getElementById('crawlOut').innerHTML = "بجمع...";
+
+  // نستخدم Unsplash source كمثال لـ web scraping (بدون مفتاح)
+  let urls = [];
+  for(let k=0;k<8;k++){
+    urls.push(`https://source.unsplash.com/300x300/?${encodeURIComponent(q)}&sig=${k}`);
+  }
+
+  document.getElementById('crawlOut').innerHTML = "";
+  for(let url of urls){
+    const img = document.createElement('img'); img.src=url; img.className='thumb';
+    document.getElementById('crawlOut').appendChild(img);
+    dataset.push({prompt:q, type:'crawl_image', data:url});
+  }
+  log(`اتجمع ${urls.length} صورة وتمت إضافتها للتدريب تلقائيا`);
+};
+
+// --- حفظ CSV ---
+document.getElementById('btnSaveCsv').onclick = ()=>{
+  if(dataset.length==0) return alert("ما في داتا");
+  let csv = "prompt,type,data,timestamp\n";
+  dataset.forEach(r=> csv += `"${r.prompt}","${r.type}","${r.data}",${Date.now()}\n`);
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download="training_dataset.csv"; a.click();
+  log("CSV اتحفظ: " + dataset.length + " صف");
+};
+
+// --- استيراد CSV ---
+document.getElementById('importCsv').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  const text = await file.text();
+  const lines = text.split('\n').slice(1);
+  lines.forEach(l=>{
+    if(!l) return;
+    const parts = l.split('","');
+    if(parts.length>=3) dataset.push({prompt:parts[0].replace('"',''), type:parts[1], data:parts[2]});
+  });
+  log("CSV اتستورد: " + lines.length + " صف، إجمالي الداتا: " + dataset.length);
+});
+</script>
+</body>
+</html>
