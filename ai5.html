@@ -1,0 +1,156 @@
+﻿<!DOCTYPE html>
+<html dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>AI Video - Fixed Firefox - 16000/8000</title>
+<style>
+body{background:#000;color:#0f0;font-family:monospace;text-align:center;padding:15px}
+button,select{padding:14px 18px;background:#0f0;color:#000;border:none;border-radius:10px;font-weight:bold;margin:6px;font-size:15px;cursor:pointer}
+#log{max-width:800px;margin:10px auto;background:#111;border:1px solid #333;padding:12px;text-align:left;direction:ltr;white-space:pre-wrap;min-height:120px;font-size:13px}
+video{width:100%;max-width:640px;border:2px solid #0f0;background:#111;min-height:200px}
+input{width:70%;padding:12px;background:#222;color:#fff;border:1px solid #555;border-radius:6px}
+</style>
+</head>
+<body>
+<h2>🎬 توليد فيديو - خبرة تيلي بارتي - فايرفوكس</h2>
+<input id="prompt" value="مدينة سودانية مستقبلية">
+<br>
+<select id="dur">
+<option value="5">5 ثواني</option>
+<option value="10">10 ثواني</option>
+<option value="60">1 دقيقة</option>
+<option value="0">مفتوح</option>
+</select>
+<button id="btnVideo">ولد فيديو</button>
+<button id="btnPlay">▶️ شغل (دوس لو ما اشتغل)</button>
+<div id="log">جاهز - Firefox - chunk 16000 / blob 8000</div>
+<video id="vid" controls playsinline></video>
+
+<script>
+const logEl = document.getElementById('log');
+const vid = document.getElementById('vid');
+let chunks = []; // برا
+let recorder = null;
+let blobUrl = null;
+
+function log(t){ 
+  logEl.textContent += "\n> "+t; 
+  console.log(t);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function getMime(){
+  const list = ['video/webm;codecs=vp8','video/webm;codecs=vp9','video/webm','video/mp4'];
+  for(let m of list){
+    if(MediaRecorder.isTypeSupported(m)){
+      log(`mime مدعوم: ${m}`);
+      return m;
+    }
+  }
+  return '';
+}
+
+document.getElementById('btnVideo').onclick = ()=>{
+  chunks = [];
+  if(blobUrl){ URL.revokeObjectURL(blobUrl); blobUrl=null; }
+  vid.removeAttribute('src');
+  logEl.textContent = "بداية...";
+  const p = document.getElementById('prompt').value || "test";
+  const dur = parseInt(document.getElementById('dur').value);
+  
+  try{
+    const canvas = document.createElement('canvas');
+    canvas.width=640; canvas.height=360;
+    const ctx = canvas.getContext('2d');
+    
+    // فايرفوكس fix
+    const stream = canvas.captureStream ? canvas.captureStream(25) : canvas.mozCaptureStream(25);
+    if(!stream){ log("❌ captureStream ما مدعوم في فايرفوكس ده"); return; }
+    
+    const mime = getMime();
+    const opts = mime ? {mimeType:mime} : {};
+    recorder = new MediaRecorder(stream, opts);
+    log(`recorder: ${recorder.mimeType || 'default'} - chunk 16000 / blob 8000`);
+
+    recorder.ondataavailable = e=>{
+      if(e.data && e.data.size>0){
+        chunks.push(e.data);
+        log(`chunk ${chunks.length} جمع: ${e.data.size} bytes`);
+      }
+    };
+
+    recorder.onstop = ()=>{
+      log(`stop - chunks=${chunks.length} - بنستنى blob 8000ms زي تيلي بارتي`);
+      
+      // === ده الحل من تيلي بارتي - 8000ms ===
+      setTimeout(()=>{
+        try{
+          if(chunks.length===0){ log("❌ ما في chunks"); return; }
+          
+          // حول chunks لـ blob مباشرة (ما dataURL) - ده البخلي فايرفوكس يفهم
+          const blob = new Blob(chunks, {type: 'video/webm'});
+          log(`blob اتكون: ${blob.size} bytes`);
+          
+          if(blob.size < 500){ log("❌ blob فاضي"); return; }
+          
+          blobUrl = URL.createObjectURL(blob);
+          log(`blob URL: ${blobUrl.substring(0,40)}...`);
+          
+          vid.src = blobUrl;
+          vid.load();
+          log("src اتعين - لو ما اشتغل أوتوماتيك دوس زر الشغل");
+          
+          vid.onloadeddata = ()=>{
+            log("✅ فايرفوكس فهم الفيديو - loadeddata");
+          };
+          vid.onerror = (e)=>{
+            log("❌ video error: "+ (vid.error ? vid.error.message : 'unknown'));
+          };
+          
+        }catch(err){
+          log("blob error: "+err.message);
+        }
+      }, 8000); // 8000ms
+    };
+
+    recorder.onerror = e=> log("recorder error: "+e.error);
+
+    recorder.start(16000); // === chunk 16000 ===
+    log("start(16000) - بسجل...");
+
+    let frame=0;
+    const max = dur===0 ? 200 : dur*10;
+    const iv = setInterval(()=>{
+      // رسم بسيط عشان نختبر
+      ctx.fillStyle = `hsl(${(frame*6)%360}, 90%, 55%)`;
+      ctx.fillRect(0,0,640,360);
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 22px monospace";
+      ctx.fillText(p, 20, 150);
+      ctx.fillText(`Frame ${frame}/${max}`, 20, 190);
+      ctx.fillText(`Chunk 16000 Blob 8000`, 20, 230);
+      ctx.fillText(new Date().toLocaleTimeString(), 20, 270);
+      
+      frame++;
+      if(frame>=max){
+        clearInterval(iv);
+        log(`وصل ${max} فريم - بوقف`);
+        if(recorder && recorder.state==="recording") recorder.stop();
+      }
+    }, 100);
+
+  }catch(err){
+    log("خطأ عام: "+err.message+" | "+err.stack);
+  }
+};
+
+document.getElementById('btnPlay').onclick = ()=>{
+  if(!vid.src){ log("لسه ما في فيديو ولد"); return; }
+  const prom = vid.play();
+  if(prom){
+    prom.then(()=>log("▶️ شغال")).catch(e=>log("play بلوك: "+e.message+" - دوس تاني"));
+  }
+};
+</script>
+</body>
+</html>
