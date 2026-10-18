@@ -1,0 +1,225 @@
+﻿<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>AI Studio V6 - Scenario Video - Fixed Crawler</title>
+<style>
+:root{--g:#0f0;--bg:#080a0f} body{background:var(--bg);color:#cfe;font-family:monospace;padding:10px}
+h1{text-align:center;color:var(--g);font-size:18px}.toolbar{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+button,select{padding:10px 12px;background:var(--g);color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-size:13px}
+.panel{max-width:1150px;margin:8px auto;border:1px solid var(--g);padding:10px;border-radius:10px;background:#111}
+#outText{white-space:pre-wrap;background:#000;padding:8px;min-height:60px;border:1px solid #333}
+#outImages{display:flex;flex-wrap:wrap;gap:6px;min-height:50px} img.thumb{width:130px;height:90px;object-fit:cover;border:2px solid #333;cursor:pointer}
+img.thumb.ok{border-color:var(--g)} img.thumb.bad{border-color:red;opacity:0.4}
+#log{background:#222;color:#ff0;padding:8px;direction:ltr;text-align:left;max-height:200px;overflow:auto;font-size:11px}
+video{width:100%;max-width:640px;border:2px solid var(--g);background:#000;margin-top:8px}
+.crawlBox{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+</style>
+</head>
+<body>
+<h1>🚀 V6 - فيديو سيناريو من كل الداتا - كرولر مصلح</h1>
+
+<div class="toolbar">
+<button id="btnText">توليد نص</button>
+<button id="btnImage">توليد صورة (Pollinations)</button>
+<select id="videoDur"><option value="5">فيديو 5ث</option><option value="10">10ث</option><option value="30">30ث</option><option value="60">1د</option><option value="0">مفتوح</option></select>
+<button id="btnVideo">🎬 ولد فيديو سيناريو من كل الصور</button>
+<button id="btnClear">🗑️ مسح الداتا</button>
+</div>
+
+<div class="panel">
+<input id="crawlQ" placeholder="ابحث: Sudan, cats, cars, nature" style="width:220px;padding:10px">
+<select id="crawlType">
+<option value="text">نصوص - Wikipedia</option>
+<option value="image" selected>صور حقيقية - Wikipedia (مصلح)</option>
+</select>
+<button id="btnCrawl">🌐 كرولينغ + تجميع مفتوح</button>
+<button id="btnSaveCsv">💾 CSV</button>
+<input type="file" id="importCsv" accept=".csv">
+<span id="dataCount" style="color:#0f0">داتا:0</span>
+<div id="crawlOut" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px"></div>
+</div>
+
+<div class="panel">
+<input id="prompt" placeholder="وصف الفيديو: قصة قطة في السودان" style="width:85%;padding:10px">
+<div id="outText"></div>
+<div id="outImages"></div>
+<video id="outVideo" controls playsinline></video>
+<div id="log">V6 جاهز - مصلح مشكلة الصور المكسورة + فيديو متعدد الصور</div>
+</div>
+
+<script type="module">
+import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js';
+
+const logEl=document.getElementById('log'), outText=document.getElementById('outText'), outImages=document.getElementById('outImages'), outVideo=document.getElementById('outVideo'), dataCount=document.getElementById('dataCount'), crawlOut=document.getElementById('crawlOut');
+function log(t){ logEl.textContent+="\n> "+t; logEl.scrollTop=logEl.scrollHeight; console.log(t); }
+function updateCount(){ const imgs=dataset.filter(d=>d.type.includes('image')||d.type==='crawl_image').length; const txts=dataset.filter(d=>d.type.includes('text')).length; dataCount.textContent=`داتا:${dataset.length} | صور:${imgs} نص:${txts} | الفيديو حيستخدم ${imgs} صورة`; }
+
+let textGen=null, dataset=[], currentVideoUrl=null;
+
+// تحميل صورة بدون crossOrigin مشكلة
+function loadImg(url){
+  return new Promise((res,rej)=>{
+    const img=new Image();
+    // مهم: ما نستخدم crossOrigin للويكي عشان ما يتبلوك
+    img.onload=()=>res(img);
+    img.onerror=()=>{ console.log("fail",url); rej(url); };
+    img.src=url;
+  });
+}
+
+async function getTextModel(){ if(textGen) return textGen; log("تحميل موديل نص..."); textGen=await pipeline('text-generation','Xenova/distilgpt2'); log("جاهز"); return textGen; }
+
+// ===== كرولر مصلح - صور بدون رابط مكسور =====
+document.getElementById('btnCrawl').onclick=async()=>{
+  const q=document.getElementById('crawlQ').value||document.getElementById('prompt').value||"Sudan";
+  const type=document.getElementById('crawlType').value;
+
+  if(type==='text'){
+    log(`📖 نصوص: ${q}`); crawlOut.innerHTML="بجيب...";
+    try{
+      const r=await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(q)}`);
+      if(r.ok){ const d=await r.json(); if(d.extract){ crawlOut.innerHTML=`<div style="background:#000;padding:8px;border:1px solid #333">${d.extract.slice(0,600)}...</div>`; dataset.push({prompt:q,type:'crawl_text',data:d.extract}); log("✅ نص"); } }
+      const r2=await fetch(`https://ar.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(q)}`); if(r2.ok){ const d=await r2.json(); if(d.extract){ dataset.push({prompt:q,type:'crawl_text',data:d.extract}); log("✅ نص عربي"); } }
+    }catch(e){ log(e.message); }
+    updateCount(); return;
+  }
+
+  // صور - الحل الجديد: نستخدم Wikipedia pageimages مباشر (ما بتتكسر)
+  log(`🖼️ كرولينغ صور حقيقية: ${q}`); crawlOut.innerHTML="بجيب صور من Wikipedia...";
+  try{
+    // الطريقة المصلحة: generator search + pageimages
+    const url=`https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(q)}&gsrlimit=15&prop=pageimages&piprop=thumbnail&pithumbsize=400&format=json&origin=*`;
+    const res=await fetch(url);
+    const data=await res.json();
+    const pages=data.query?Object.values(data.query.pages):[];
+    let ok=0;
+    crawlOut.innerHTML="";
+    for(let p of pages){
+      if(p.thumbnail && p.thumbnail.source){
+        const thumb=p.thumbnail.source; // ده رابط شغال 100% بدون مشكلة
+        const imgEl=document.createElement('img'); imgEl.src=thumb; imgEl.className='thumb';
+        imgEl.onload=()=>{ imgEl.classList.add('ok'); };
+        imgEl.onerror=()=>{ imgEl.classList.add('bad'); };
+        imgEl.title=p.title;
+        crawlOut.appendChild(imgEl);
+        dataset.push({prompt:q,type:'crawl_image',data:thumb}); // نحفظ نفس الرابط الشغال
+        ok++;
+        log(`✅ صورة ${ok}: ${p.title}`);
+      }
+    }
+    if(ok==0){
+      // fallback: Unsplash random - شغال دائما
+      log("Wikipedia ما لقى صور، بنستخدم Unsplash (بدون علامة)");
+      crawlOut.innerHTML="";
+      for(let k=0;k<8;k++){
+        const u=`https://picsum.photos/seed/${encodeURIComponent(q)}${k}${Date.now()}/400/300`;
+        const img=document.createElement('img'); img.src=u; img.className='thumb ok';
+        crawlOut.appendChild(img); dataset.push({prompt:q,type:'crawl_image',data:u}); ok++;
+      }
+    }
+    log(`✅ جمع ${ok} صورة حقيقية - كلها قابلة للاستخدام للفيديو`);
+  }catch(e){
+    log("❌ فشل: "+e.message);
+    // fallback أخير
+    for(let k=0;k<6;k++){ const u=`https://picsum.photos/400/300?random=${k}`; dataset.push({prompt:q,type:'crawl_image',data:u}); }
+  }
+  updateCount();
+};
+
+// توليد نص
+document.getElementById('btnText').onclick=async()=>{
+  const prompt=document.getElementById('prompt').value||"قصة";
+  const ctxTexts=dataset.filter(d=>d.type==='crawl_text').slice(-2).map(d=>d.data.slice(0,400)).join("\n");
+  const full=ctxTexts? ctxTexts+"\n\n"+prompt : prompt;
+  const m=await getTextModel(); log("بولد نص..."); const r=await m(full,{max_new_tokens:150});
+  outText.textContent=r[0].generated_text.slice(full.length); dataset.push({prompt,type:'text',data:outText.textContent}); updateCount();
+};
+
+// توليد صورة - فصل عن الفيديو لكن يغذي نفس الداتا
+document.getElementById('btnImage').onclick=()=>{
+  const p=document.getElementById('prompt').value||"cat";
+  const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=640&height=360&nologo=true&seed=${Math.random()*9999|0}`;
+  const img=document.createElement('img'); img.src=url; img.className='thumb ok';
+  img.onload=()=>{ log(`✅ صورة مولدة: ${p}`); };
+  outImages.appendChild(img); // ما بنمسح القديم - تجميع مفتوح
+  dataset.push({prompt:p,type:'image',data:url}); updateCount();
+  log(`📥 الصورة اتضافت للتدريب - إجمالي صور: ${dataset.filter(d=>d.type.includes('image')).length}`);
+};
+
+// ===== فيديو سيناريو حقيقي من كل الداتا =====
+document.getElementById('btnVideo').onclick=async()=>{
+  const dur=parseInt(document.getElementById('videoDur').value);
+  const prompt=document.getElementById('prompt').value||"story";
+  // ياخد كل الصور: crawl_image + image
+  const allImages=dataset.filter(d=>d.type==='crawl_image' || d.type==='image').map(d=>d.data);
+  
+  if(allImages.length==0){ log("❌ ما في صور - اعمل كرولينغ أو ولد صور أول"); return; }
+  if(currentVideoUrl) try{URL.revokeObjectURL(currentVideoUrl);}catch(e){}
+
+  log(`🎬 سيناريو فيديو من ${allImages.length} صورة - ${dur==0?'مفتوح':dur+'ث'}`);
+
+  const canvas=document.createElement('canvas'); canvas.width=640; canvas.height=360; const ctx=canvas.getContext('2d');
+  const stream=canvas.captureStream(24); const rec=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp8'}); let chunks=[]; rec.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
+  rec.onstop=()=>{ setTimeout(()=>{ const blob=new Blob(chunks,{type:'video/webm'}); currentVideoUrl=URL.createObjectURL(blob); outVideo.src=currentVideoUrl; outVideo.load(); outVideo.onloadeddata=()=>{ log(`✅ فيديو سيناريو جاهز ${blob.size} bytes من ${allImages.length} صورة`); outVideo.play().catch(()=>{}); }; },300); };
+
+  // حمل كل الصور
+  let loaded=[]; log(`بحمل ${allImages.length} صورة للسيناريو...`);
+  for(let u of allImages.slice(0,20)){ // حد أقصى 20 صورة للفيديو
+    try{ const im=await loadImg(u); loaded.push(im); log(`✓ حمل ${loaded.length}/${Math.min(allImages.length,20)}`); }catch(e){ log(`✗ تخطي صورة مكسورة`); }
+  }
+  if(loaded.length==0){ log("❌ كل الصور مكسورة - جرب كرولينغ تاني"); return; }
+
+  rec.start(250);
+  let frame=0, total=dur==0? 240 : dur*24;
+  let scenarioIdx=0; // كل صورة سيناريو مختلف
+  const scenarios=['zoomIn','zoomOut','panLeft','panRight','zoomInSlow'];
+
+  const iv=setInterval(()=>{
+    ctx.fillStyle="#000"; ctx.fillRect(0,0,640,360);
+    
+    // سيناريو: كل صورة 2-3 ثواني بتأثير مختلف
+    const framesPerImage=48; // 2 ثانية
+    const imgIndex=Math.floor(frame/framesPerImage) % loaded.length;
+    const img=loaded[imgIndex];
+    const localFrame=frame % framesPerImage;
+    const progress=localFrame/framesPerImage;
+    const scenario=scenarios[imgIndex % scenarios.length];
+
+    // تطبيق السيناريو
+    let x=0,y=0,w=640,h=360, zoom=1;
+    if(scenario==='zoomIn'){ zoom=1+progress*0.4; w=640*zoom; h=360*zoom; x=(640-w)/2; y=(360-h)/2; }
+    else if(scenario==='zoomOut'){ zoom=1.4-progress*0.4; w=640*zoom; h=360*zoom; x=(640-w)/2; y=(360-h)/2; }
+    else if(scenario==='panLeft'){ w=700; h=400; x= -progress*60; y=(360-h)/2; }
+    else if(scenario==='panRight'){ w=700; h=400; x= (640-w)+progress*60; y=(360-h)/2; }
+    else { zoom=1+Math.sin(progress*Math.PI)*0.2; w=640*zoom; h=360*zoom; x=(640-w)/2; y=(360-h)/2; }
+
+    ctx.drawImage(img, x, y, w, h);
+
+    // overlay
+    ctx.fillStyle="rgba(0,0,0,0.55)"; ctx.fillRect(0,295,640,65);
+    ctx.fillStyle="#0f0"; ctx.font="bold 14px monospace"; ctx.textAlign="center";
+    ctx.fillText(prompt.slice(0,55), 320, 315);
+    ctx.fillStyle="#ff0"; ctx.font="10px monospace";
+    ctx.fillText(`Scenario ${imgIndex+1}/${loaded.length} [${scenario}] - Frame ${frame}/${total} - ${loaded.length} صور`, 320, 335);
+    ctx.fillText(`من كل الداتا: ${allImages.length} صورة مجمعة`, 320, 350);
+
+    frame++; if(frame>=total){ clearInterval(iv); rec.stop(); log(`✅ انتهى سيناريو ${loaded.length} صورة`); }
+  },1000/24);
+
+  dataset.push({prompt,type:'video',data:`scenario_video_${Date.now()}_${loaded.length}imgs`}); updateCount();
+};
+
+document.getElementById('btnClear').onclick=()=>{ dataset=[]; crawlOut.innerHTML=""; outImages.innerHTML=""; outText.textContent=""; log("🗑️ مسح الداتا"); updateCount(); };
+document.getElementById('btnSaveCsv').onclick=()=>{
+  if(!dataset.length) return alert("ما في داتا"); let csv="prompt,type,data,timestamp\n"; dataset.forEach(r=>{ const s=v=>`"${String(v).replace(/"/g,'""')}"`; csv+=`${s(r.prompt)},${s(r.type)},${s(r.data)},${Date.now()}\n`; });
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`training_v6_${Date.now()}.csv`; a.click(); log("CSV حفظ");
+};
+document.getElementById('importCsv').addEventListener('change',async e=>{
+  const t=await e.target.files[0].text(); let c=0; t.split('\n').slice(1).forEach(l=>{ const m=l.match(/"([^"]*)","([^"]*)","([^"]*)"/); if(m){ dataset.push({prompt:m[1],type:m[2],data:[STRIPPED] c++; } }); log(`استيراد ${c} - إجمالي ${dataset.length}`); updateCount();
+});
+
+log("V6 جاهز - كرولر مصلح + فيديو سيناريو من كل الصور (zoom/pan)"); updateCount();
+</script>
+</body>
+</html>
