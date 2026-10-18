@@ -1,0 +1,359 @@
+﻿<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>V6.6 - Firefox + http/https Fixed - Video MASTER</title>
+<style>
+body{background:#080a0f;color:#cfe;font-family:monospace;padding:10px}
+h1{text-align:center;color:#0f0;font-size:14px}
+button{padding:10px;background:#0f0;color:#000;border:none;border-radius:8px;font-weight:bold;margin:3px;cursor:pointer}
+.panel{max-width:1100px;margin:8px auto;border:1px solid #0f0;padding:10px;border-radius:10px;background:#111}
+#outText{background:#000;padding:8px;min-height:30px;border:1px solid #333;white-space:pre-wrap}
+#outImages{display:flex;flex-wrap:wrap;gap:6px;min-height:30px;border:1px dashed #333;padding:6px}
+img.thumb{width:130px;height:90px;object-fit:cover;border:2px solid #0f0}
+#log{background:#222;color:#ff0;padding:8px;direction:ltr;text-align:left;max-height:250px;overflow:auto;font-size:11px;white-space:pre-wrap}
+video{width:100%;max-width:640px;border:2px solid #0f0;background:#000;margin-top:8px;min-height:200px}
+#crawlOut{display:flex;flex-wrap:wrap;gap:6px;min-height:30px;border:1px dashed #555;padding:6px;margin-top:6px}
+#hiddenCanvas{display:none}
+</style>
+</head>
+<body>
+<h1>V6.6 MASTER - فيديو شغال فايرفوكس + كروم http/https</h1>
+
+<div style="text-align:center">
+<button onclick="genText()">توليد نص</button>
+<button onclick="genImage()">توليد صورة</button>
+<button onclick="genVideo()">🎬 فيديو سيناريو - FIREFOX FIX</button>
+<button onclick="clearAll()">مسح</button>
+</div>
+
+<div class="panel">
+<input id="crawlQ" placeholder="قطة، Sudan" style="width:140px;padding:10px">
+<select id="crawlType"><option value="text">نصوص</option><option value="image" selected>صور</option></select>
+<button onclick="doCrawl()">كرولينغ http/https</button>
+<button onclick="saveCsv()">CSV</button>
+<span id="dataCount">داتا:0</span>
+<div id="crawlOut"></div>
+<div style="font-size:10px;color:#888">http/https auto + Firefox fix + لا صور مكسرة</div>
+</div>
+
+<div class="panel">
+<input id="prompt" placeholder="وصف: قطة سودانية" style="width:80%;padding:10px">
+<div id="outText"></div>
+<div id="outImages"></div>
+<video id="outVideo" controls playsinline muted></video>
+<canvas id="hiddenCanvas" width="640" height="360"></canvas>
+<div id="log">V6.6 جاهز - فايرفوكس + http/https</div>
+</div>
+
+<script>
+var dataset=[];
+var currentVideoUrl=null;
+
+function log(t){
+  var el=document.getElementById('log');
+  el.textContent=el.textContent+"\n> "+t;
+  el.scrollTop=el.scrollHeight;
+}
+function updateCount(){
+  var imgs=0,txts=0;
+  for(var i=0;i<dataset.length;i++){
+    if(dataset[i].type.indexOf('image')>-1) imgs++;
+    if(dataset[i].type.indexOf('text')>-1) txts++;
+  }
+  document.getElementById('dataCount').textContent="داتا:"+dataset.length+" صور:"+imgs+" نص:"+txts;
+}
+
+// إصلاح http/https - يحول أي رابط ل https لو الصفحة https والعكس
+function fixUrl(url){
+  if(!url) return url;
+  // لو الصفحة http والرابط https - نخليه http لو أمكن أو نخليه https (مسموح)
+  // لو الصفحة https والرابط http - نحوله https عشان ما يبلوك
+  if(window.location.protocol==='https:' && url.indexOf('http:')==0){
+    return url.replace('http:','https:');
+  }
+  return url;
+}
+
+function loadImg(url){
+  return new Promise(function(res,rej){
+    var img=new Image();
+    img.crossOrigin="anonymous"; // مهم عشان لا يتعمل taint للكانفاس
+    img.onload=function(){res(img);};
+    img.onerror=function(){
+      // جرب بدون crossOrigin لو فشل
+      var img2=new Image();
+      img2.onload=function(){res(img2);};
+      img2.onerror=function(){rej(url);};
+      img2.src=fixUrl(url);
+    };
+    img.src=fixUrl(url);
+  });
+}
+
+function genText(){
+  var p=document.getElementById('prompt').value||"قصة";
+  var ctx="";
+  for(var i=Math.max(0,dataset.length-2);i<dataset.length;i++){
+    if(dataset[i].type.indexOf('text')>-1) ctx+=dataset[i].data.slice(0,200)+" ";
+  }
+  var result= ctx ? "تدريب: "+ctx+" | قصة عن "+p : "قصة عن "+p+" في السودان...";
+  document.getElementById('outText').textContent=result;
+  dataset.push({prompt:p,type:'text',data:result});
+  updateCount();
+  log("نص OK");
+}
+
+function genImage(){
+  var p=document.getElementById('prompt').value||"cat";
+  var url="https://image.pollinations.ai/prompt/"+encodeURIComponent(p)+"?width=640&height=360&seed="+Math.floor(Math.random()*9999);
+  url=fixUrl(url);
+  log("صورة: "+p);
+  var img=document.createElement('img');
+  img.src=url;
+  img.className='thumb';
+  document.getElementById('outImages').appendChild(img);
+  dataset.push({prompt:p,type:'image',data:url});
+  updateCount();
+}
+
+function doCrawl(){
+  var q=document.getElementById('crawlQ').value||document.getElementById('prompt').value||"Sudan";
+  var type=document.getElementById('crawlType').value;
+  log("كرول: "+q+" "+type+" protocol:"+window.location.protocol);
+  var out=document.getElementById('crawlOut');
+  out.innerHTML="بجيب...";
+
+  // نستخدم https دائما، لو فشل نجرب http proxy
+  var baseAr="https://ar.wikipedia.org/w/api.php";
+  var baseEn="https://en.wikipedia.org/w/api.php";
+
+  if(type=='text'){
+    fetch(baseAr+"?action=query&list=search&srsearch="+encodeURIComponent(q)+"&srlimit=3&format=json&origin=*")
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(data.query && data.query.search && data.query.search.length>0){
+        out.innerHTML="";
+        var first=data.query.search[0];
+        fetch(baseAr+"?action=query&prop=extracts&exintro&explaintext&titles="+encodeURIComponent(first.title)+"&format=json&origin=*")
+        .then(function(r){return r.json();})
+        .then(function(pd){
+          var pages=Object.values(pd.query.pages);
+          if(pages[0] && pages[0].extract){
+            var txt=pages[0].extract.slice(0,800);
+            var div=document.createElement('div');
+            div.style.background="#000"; div.style.padding="6px"; div.style.border="1px solid #333";
+            div.textContent=first.title+": "+txt.slice(0,400);
+            out.appendChild(div);
+            dataset.push({prompt:q,type:'crawl_text',data:txt});
+            log("نص عربي OK: "+first.title);
+            updateCount();
+          }
+        });
+      }else{ out.textContent="ما لقى نص"; }
+    })
+    .catch(function(e){ log("نص فشل: "+e.message); });
+  }else{
+    // صور مع إصلاح http/https
+    fetch(baseEn+"?action=query&generator=search&gsrsearch="+encodeURIComponent(q)+"&gsrlimit=10&prop=pageimages&piprop=thumbnail&pithumbsize=400&format=json&origin=*")
+    .then(function(r){return r.json();})
+    .then(function(data){
+      out.innerHTML="";
+      var ok=0;
+      var pages=data.query?Object.values(data.query.pages):[];
+      for(var i=0;i<pages.length;i++){
+        var p=pages[i];
+        if(p.thumbnail && p.thumbnail.source){
+          var thumb=fixUrl(p.thumbnail.source);
+          var img=document.createElement('img');
+          img.src=thumb;
+          img.className='thumb';
+          img.crossOrigin="anonymous";
+          out.appendChild(img);
+          dataset.push({prompt:q,type:'crawl_image',data:thumb});
+          ok++;
+        }
+      }
+      if(ok==0){
+        for(var k=0;k<6;k++){
+          var u="https://picsum.photos/seed/"+encodeURIComponent(q)+k+Date.now()+"/400/300";
+          u=fixUrl(u);
+          var img2=document.createElement('img');
+          img2.src=u;
+          img2.className='thumb';
+          img2.crossOrigin="anonymous";
+          out.appendChild(img2);
+          dataset.push({prompt:q,type:'crawl_image',data:u});
+          ok++;
+        }
+      }
+      log("صور "+ok+" protocol fixed");
+      updateCount();
+    })
+    .catch(function(e){
+      log("ويكي فشل، picsum http/https");
+      out.innerHTML="";
+      for(var k=0;k<6;k++){
+        var u="https://picsum.photos/seed/"+encodeURIComponent(q)+k+Date.now()+"/400/300";
+        u=fixUrl(u);
+        var img2=document.createElement('img');
+        img2.src=u;
+        img2.className='thumb';
+        out.appendChild(img2);
+        dataset.push({prompt:q,type:'crawl_image',data:u});
+      }
+      updateCount();
+    });
+  }
+}
+
+function genVideo(){
+  var allImages=[];
+  for(var i=0;i<dataset.length;i++){ if(dataset[i].type.indexOf('image')>-1) allImages.push(dataset[i].data); }
+  if(allImages.length==0){ log("ما في صور"); return; }
+  if(currentVideoUrl){ try{URL.revokeObjectURL(currentVideoUrl);}catch(e){} }
+  log("فيديو من "+allImages.length+" صورة - Firefox fix");
+
+  // إصلاح فايرفوكس: استخدم hiddenCanvas الموجود في DOM
+  var canvas=document.getElementById('hiddenCanvas');
+  canvas.width=640; canvas.height=360;
+  var ctx=canvas.getContext('2d');
+
+  // Firefox fix: mozCaptureStream
+  var stream=null;
+  try{
+    if(canvas.captureStream){ stream=canvas.captureStream(25); log("captureStream 25fps"); }
+    else if(canvas.mozCaptureStream){ stream=canvas.mozCaptureStream(25); log("mozCaptureStream 25fps - Firefox"); }
+    else { log("❌ المتصفح ما بدعم captureStream"); alert("فايرفوكس قديم - حدث المتصفح"); return; }
+  }catch(e){ log("captureStream خطأ: "+e.message); return; }
+
+  // إصلاح mime لفايرفوكس: جرب كل الأنواع
+  var mimeToUse="";
+  var possibleMimes=['video/webm','video/webm;codecs=vp8','video/webm;codecs=vp9','video/ogg',''];
+  for(var m=0;m<possibleMimes.length;m++){
+    var mt=possibleMimes[m];
+    try{
+      if(mt=='' || MediaRecorder.isTypeSupported(mt)){
+        mimeToUse=mt;
+        log("جرب mime: "+(mt||'auto'));
+        break;
+      }
+    }catch(e){}
+  }
+
+  var rec;
+  try{
+    if(mimeToUse){ rec=new MediaRecorder(stream,{mimeType:mimeToUse}); }
+    else { rec=new MediaRecorder(stream); }
+  }catch(e){
+    log("MediaRecorder فشل: "+e.message+" جرب بدون mime");
+    try{ rec=new MediaRecorder(stream); }catch(e2){ log("فشل نهائي: "+e2.message); alert("المتصفح ما بدعم تسجيل فيديو: "+e2.message); return; }
+  }
+  log("✅ rec mime: "+rec.mimeType);
+
+  var chunks=[];
+  rec.ondataavailable=function(e){ if(e.data && e.data.size>0){ chunks.push(e.data); log("chunk "+e.data.size); } };
+
+  rec.onstop=function(){
+    setTimeout(function(){
+      if(chunks.length==0){ log("❌ chunks فاضي - فايرفوكس ما سجل"); alert("فايرفوكس ما سجل، جرب كروم"); return; }
+      // فيديو webm دائما لفايرفوكس
+      var blob=new Blob(chunks,{type:'video/webm'});
+      log("blob "+blob.size+" type webm - chunks "+chunks.length);
+      if(blob.size<500){ log("❌ blob صغير جدا"); return; }
+
+      if(currentVideoUrl){ try{URL.revokeObjectURL(currentVideoUrl);}catch(e){} }
+      currentVideoUrl=URL.createObjectURL(blob);
+      var v=document.getElementById('outVideo');
+      // إصلاح فايرفوكس: شيل src أول
+      v.removeAttribute('src');
+      v.src=currentVideoUrl;
+      v.load();
+      v.onloadeddata=function(){
+        log("✅ فيديو جاهز "+blob.size+" bytes - Firefox OK");
+        v.muted=true;
+        var playPromise=v.play();
+        if(playPromise){ playPromise.catch(function(){ log("دوس play يدوي"); }); }
+      };
+      v.onerror=function(){ var err=v.error; log("video error: "+(err?err.message+' code:'+err.code:'unknown')); };
+    },500);
+  };
+
+  // حمل الصور
+  var loaded=[];
+  var promises=[];
+  for(var u=0;u<Math.min(allImages.length,10);u++){
+    (function(url){
+      promises.push(
+        loadImg(url).then(function(im){ loaded.push(im); log("حمل "+loaded.length); }).catch(function(){ log("تخطي صورة مكسرة: "+url.slice(0,30)); })
+      );
+    })(allImages[u]);
+  }
+
+  Promise.all(promises).then(function(){
+    if(loaded.length==0){ log("❌ كل الصور مكسورة - لا taint"); return; }
+    log("بدء تسجيل - "+loaded.length+" صورة");
+    try{ rec.start(250); log("start 250"); }catch(e){ log("start فشل: "+e.message); try{ rec.start(); }catch(e2){} }
+
+    var frame=0;
+    var total=120;
+    var iv=setInterval(function(){
+      ctx.fillStyle="#000";
+      ctx.fillRect(0,0,640,360);
+      var fpi=40;
+      var idx=Math.floor(frame/fpi)%loaded.length;
+      var img=loaded[idx];
+      var local=frame%fpi;
+      var prog=local/fpi;
+      var w=640,h=360,x=0,y=0;
+      if(idx%2==0){ var z=1+prog*0.4; w=640*z; h=360*z; x=(640-w)/2; y=(360-h)/2; }else{ var z=1.4-prog*0.4; w=640*z; h=360*z; x=(640-w)/2; y=(360-h)/2; }
+      try{ ctx.drawImage(img,x,y,w,h); }catch(e){ log("drawImage taint: "+e.message); }
+
+      ctx.fillStyle="rgba(0,0,0,0.6)";
+      ctx.fillRect(0,300,640,60);
+      ctx.fillStyle="#0f0";
+      ctx.font="12px monospace";
+      ctx.textAlign="center";
+      var prompt=document.getElementById('prompt').value||"video";
+      ctx.fillText(prompt.slice(0,45),320,315);
+      ctx.fillText("Firefox Fixed - "+(idx+1)+"/"+loaded.length+" "+frame+"/"+total,320,335);
+      frame++;
+      if(frame>=total){ clearInterval(iv); try{ rec.stop(); log("stop"); }catch(e){ log("stop خطأ: "+e.message); } }
+    },1000/25);
+  });
+
+  dataset.push({prompt:'video',type:'video',data:'video_'+Date.now()});
+  updateCount();
+}
+
+function clearAll(){
+  dataset=[];
+  document.getElementById('crawlOut').innerHTML="";
+  document.getElementById('outImages').innerHTML="";
+  document.getElementById('outText').textContent="";
+  log("مسح");
+  updateCount();
+}
+
+function saveCsv(){
+  if(dataset.length==0){ alert("ما في داتا"); return; }
+  var csv="prompt,type,data,timestamp\n";
+  for(var i=0;i<dataset.length;i++){
+    var r=dataset[i];
+    var s=function(v){ return '"'+String(v).replace(/"/g,'""')+'"'; };
+    csv+=s(r.prompt)+","+s(r.type)+","+s(r.data)+","+Date.now()+"\n";
+  }
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download="training_"+Date.now()+".csv";
+  a.click();
+  log("CSV");
+}
+
+log("V6.6 MASTER جاهز - Firefox + http/https + taint fix");
+log("protocol: "+window.location.protocol);
+log("userAgent: "+navigator.userAgent.slice(0,80));
+updateCount();
+</script>
+</body>
+</html>
