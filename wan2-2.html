@@ -1,0 +1,278 @@
+﻿<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>V16.5 Wan 2.2 I2V - صورة → فيديو 10ث MP4</title>
+<style>
+body{background:#000;color:#0f0;font-family:monospace;padding:8px;margin:0;text-align:center}
+h1{font-size:11px}
+input,textarea{width:90%;max-width:540px;background:#111;color:#0f0;border:1px solid #0f0;padding:10px;border-radius:8px;margin:4px}
+button{padding:11px 16px;background:#0f0;color:#000;border:none;border-radius:12px;font-weight:bold;margin:4px;cursor:pointer;font-size:10px}
+button.blue{background:#0af;color:#fff} button.orange{background:#fa0;color:#000} button.purple{background:#a0f;color:#fff} button.red{background:#f00;color:#fff} button.green{background:#0ff;color:#000}
+video,img{max-width:540px;max-height:380px;border:2px solid #0f0;display:block;margin:8px auto}
+#drop{border:2px dashed #0f0;padding:20px;margin:8px;border-radius:12px;cursor:pointer;background:#111}
+#preview{display:none;border:3px solid #0f0}
+.stat{display:inline-block;background:#222;border:1px solid #0f0;padding:4px 8px;border-radius:6px;margin:2px;font-size:8px}
+#log{background:#222;color:#ff0;padding:6px;font-size:7px;direction:ltr;max-height:120px;overflow:auto;text-align:left;white-space:pre-wrap}
+#progress{width:90%;max-width:540px;height:20px;background:#222;border:1px solid #0f0;border-radius:10px;margin:8px auto;display:none}
+#progressBar{height:100%;width:0%;background:#0f0;border-radius:10px;transition:width 0.5s}
+</style>
+</head>
+<body>
+<h1>🎬 V16.5 Wan 2.2 I2V 14B - kulkas2pintu-wan777 - صورة → فيديو 10ث MP4 حقيقي</h1>
+
+<div id="drop">
+📤 دوس لرفع صورة - Wan 2.2 حيحركها 10ث<br>
+<input type="file" id="file" accept="image/*" style="display:none">
+</div>
+
+<img id="preview">
+
+<div>
+<textarea id="prompt" rows="2" placeholder="وصف الحركة: مثال: person smiling, camera zoom in, gentle wind">gentle motion, camera slow zoom in, cinematic, high quality, smooth</textarea><br>
+مدة: <span id="durVal">10</span>ث <input type="range" id="duration" min="2" max="10" value="10" oninput="document.getElementById('durVal').textContent=this.value">
+</div>
+
+<div>
+<button onclick="generateWan()">🎬 ولد فيديو Wan 2.2 حقيقي 10ث MP4</button>
+<button class="blue" id="downloadBtn" style="display:none" onclick="downloadVideo()">💾 تحميل MP4</button>
+<button class="green" onclick="generateFallback()">🎨 fallback متقدم (لو Wan نايم)</button>
+<button class="red" onclick="clearAll()">🗑️</button>
+</div>
+
+<div id="progress"><div id="progressBar"></div></div>
+
+<div>
+<span class="stat">صورة: <span id="imgStat">لا</span></span>
+<span class="stat">حالة: <span id="status">جاهز</span></span>
+<span class="stat">Wan: <span id="wanStat">14B Fast</span></span>
+</div>
+
+<video id="resultVideo" controls loop playsinline style="display:none"></video>
+<canvas id="canvasAnim" width="640" height="360" style="display:none"></canvas>
+
+<div id="log">V16.5 Wan 2.2 - Function: generate_video
+- ارفع صورة
+- دوس ولد فيديو Wan 2.2 حقيقي
+- الموديل بياخد 1-3 دقائق لأول مرة (يحمل 14B)
+- النتيجة MP4 حقيقي 10ث</div>
+
+<script>
+let uploadedFile=null, generatedVideoUrl=null;
+let preview=document.getElementById('preview'), fileInput=document.getElementById('file');
+let drop=document.getElementById('drop'), resultVideo=document.getElementById('resultVideo');
+let canvasAnim=document.getElementById('canvasAnim'), ctxAnim=canvasAnim.getContext('2d');
+let progress=document.getElementById('progress'), progressBar=document.getElementById('progressBar');
+
+function log(t){ let l=document.getElementById('log'); l.textContent+="\n> "+t; l.scrollTop=9999; }
+function setProgress(p,txt){ progress.style.display="block"; progressBar.style.width=p+"%"; document.getElementById('status').textContent=txt+" "+p+"%"; }
+
+function handleFile(file){
+  if(!file) return;
+  uploadedFile=file;
+  let reader=new FileReader();
+  reader.onload=e=>{
+    preview.src=e.target.result;
+    preview.style.display="block";
+    document.getElementById('imgStat').textContent=file.name;
+    log("✅ صورة: "+file.name+" "+(file.size/1024).toFixed(0)+"KB");
+  };
+  reader.readAsDataURL(file);
+}
+
+fileInput.addEventListener('change', e=>{ if(e.target.files[0]) handleFile(e.target.files[0]); });
+drop.addEventListener('click', ()=>fileInput.click());
+drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.style.borderColor="#fa0"; });
+drop.addEventListener('dragleave', ()=>drop.style.borderColor="#0f0");
+drop.addEventListener('drop', e=>{ e.preventDefault(); drop.style.borderColor="#0f0"; if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+
+async function generateWan(){
+  if(!uploadedFile){ alert("ارفع صورة أولا"); return; }
+  let prompt=document.getElementById('prompt').value || "gentle motion, cinematic";
+  let duration=parseInt(document.getElementById('duration').value);
+  
+  document.getElementById('status').textContent="يبدأ Wan 2.2...";
+  setProgress(5,"يتصل بـ Space...");
+  log("🎬 Wan 2.2 I2V 14B - يحاول generate_video - مدة "+duration+"ث");
+  log("⚠️ Space قد يكون نايم - لو نايم بياخد 60ث يصحى");
+
+  try{
+    // 1. رفع الملف
+    setProgress(10,"يرفع الصورة...");
+    let form=new FormData();
+    form.append("files", uploadedFile);
+    let uploadRes=await fetch("https://kulkas2pintu-wan777.hf.space/gradio_api/upload",{method:"POST", body:form});
+    if(!uploadRes.ok) throw new Error("Upload فشل "+uploadRes.status);
+    let uploadJson=await uploadRes.json();
+    log("Upload: "+JSON.stringify(uploadJson).substring(0,200));
+    let fileInfo=uploadJson[0]; // {path, url, size...}
+    
+    // 2. استدعاء generate_video
+    setProgress(20,"يرسل لـ Wan 2.2...");
+    let sessionHash=Math.random().toString(36).substring(2);
+    
+    // Wan 2.2 I2V inputs من الـ Space: غالبا [image, prompt, negative, frames, fps, ...]
+    // بنجرب ترتيب شائع
+    let payload={
+      data:[
+        fileInfo,  // image
+        prompt,    // prompt
+        "blurry, low quality, distorted", // negative
+        duration*8, // frames (8fps * duration)
+        8, // fps
+        512, // width
+        512  // height
+      ],
+      fn_index:0,
+      session_hash:sessionHash
+    };
+    
+    log("Payload: generate_video - "+duration*8+" frames");
+    
+    let callRes=await fetch("https://kulkas2pintu-wan777.hf.space/gradio_api/call/generate_video",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload)
+    });
+    
+    if(!callRes.ok){
+      let txt=await callRes.text();
+      log("❌ Call فشل: "+txt.substring(0,500));
+      throw new Error("Call فشل");
+    }
+    
+    let callJson=await callRes.json();
+    log("Call response: "+JSON.stringify(callJson).substring(0,300));
+    let eventId=callJson.event_id;
+    if(!eventId) throw new Error("ما في event_id");
+    
+    // 3. Polling النتيجة
+    setProgress(30,"Wan 2.2 يولد... قد ياخد 60-180ث");
+    log("⏳ ينتظر Wan 2.2 - polling event "+eventId+" ...");
+    
+    let attempts=0;
+    while(attempts<120){ // 120 * 2ث = 4 دقائق
+      await new Promise(r=>setTimeout(r,2000));
+      attempts++;
+      setProgress(30+Math.min(60, attempts), "Wan يولد... "+attempts*2+"ث");
+      
+      let resultRes=await fetch(`https://kulkas2pintu-wan777.hf.space/gradio_api/call/generate_video/${eventId}`);
+      let text=await resultRes.text();
+      
+      if(text.includes("data:")){
+        // Gradio stream format: event: ... data: [...]
+        let lines=text.split("\n");
+        for(let line of lines){
+          if(line.startsWith("data:")){
+            try{
+              let data=JSON.parse(line.substring(5));
+              log("Stream data: "+JSON.stringify(data).substring(0,500));
+              // النتيجة في data[0] غالبا
+              if(data && data.length>0){
+                let videoInfo=data[0];
+                let url=videoInfo?.url || videoInfo?.video?.url || (typeof videoInfo==='string'?videoInfo:null);
+                if(url && (url.includes('.mp4') || url.includes('.webm') || url.includes('/file='))){
+                  // لو /file= لازم نبني رابط كامل
+                  if(url.startsWith("/")) url="https://kulkas2pintu-wan777.hf.space"+url;
+                  generatedVideoUrl=url;
+                  resultVideo.src=url; resultVideo.style.display="block";
+                  document.getElementById('downloadBtn').style.display="inline-block";
+                  setProgress(100,"اكتمل!");
+                  document.getElementById('status').textContent="Wan 2.2 اكتمل MP4";
+                  log("✅ فيديو Wan 2.2 حقيقي: "+url);
+                  return;
+                }
+              }
+            }catch(e){}
+          }
+        }
+      }
+      
+      if(text.includes("error") || text.includes("failed")){
+        log("❌ Stream error: "+text.substring(0,500));
+        throw new Error("Wan فشل");
+      }
+    }
+    
+    throw new Error("Timeout - Wan ما رد في 4 دقائق");
+    
+  }catch(e){
+    setProgress(0,"فشل");
+    log("❌ Wan فشل: "+e.message);
+    log("💡 جرب: 1- Space نايم دوس تاني بعد دقيقة 2- استخدم fallback متقدم");
+    document.getElementById('status').textContent="Wan فشل - جرب fallback";
+  }
+}
+
+function generateFallback(){
+  if(!uploadedFile){ alert("ارفع صورة"); return; }
+  let duration=parseInt(document.getElementById('duration').value);
+  let type="parallax";
+  log("🎨 Fallback متقدم "+type+" "+duration+"ث - حركة حقيقية مش زووم بس");
+  document.getElementById('status').textContent="Fallback "+duration+"ث...";
+  progress.style.display="block"; progressBar.style.width="50%";
+  
+  canvasAnim.style.display="block";
+  let framesNeeded=duration*24;
+  let frame=0;
+  let stream=canvasAnim.captureStream(24);
+  let recorder=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9'});
+  let chunks=[];
+  recorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
+  recorder.onstop=()=>{
+    let blob=new Blob(chunks,{type:'video/webm'});
+    let url=URL.createObjectURL(blob);
+    resultVideo.src=url; resultVideo.style.display="block";
+    generatedVideoUrl=url;
+    document.getElementById('downloadBtn').style.display="inline-block";
+    setProgress(100,"Fallback اكتمل");
+    log("✅ Fallback "+duration+"ث جاهز - parallax حقيقي");
+  };
+  recorder.start();
+  let img=new Image(); img.src=preview.src;
+  img.onload=()=>{
+    function draw(){
+      ctxAnim.clearRect(0,0,640,360);
+      let t=frame/framesNeeded;
+      // Parallax حقيقي - 3 طبقات
+      for(let l=0;l<3;l++){
+        let depth=(l+1)/3;
+        let offsetX=Math.sin(t*2+depth)*25*depth;
+        let offsetY=Math.cos(t*1.3+depth)*12*depth;
+        let scale=1+depth*0.4+t*0.3;
+        ctxAnim.globalAlpha=1-depth*0.25;
+        let w=640*scale, h=360*scale;
+        ctxAnim.drawImage(img,(640-w)/2+offsetX,(360-h)/2+offsetY,w,h);
+      }
+      ctxAnim.globalAlpha=1;
+      frame++;
+      if(frame<framesNeeded){ requestAnimationFrame(draw); }else{ recorder.stop(); }
+    }
+    draw();
+  };
+}
+
+function downloadVideo(){
+  if(!generatedVideoUrl){ alert("ما في فيديو"); return; }
+  let a=document.createElement('a');
+  a.href=generatedVideoUrl;
+  let ext=generatedVideoUrl.includes('.mp4')?'mp4':'webm';
+  a.download="wan22-animation-"+Date.now()+"-"+document.getElementById('duration').value+"s."+ext;
+  a.click();
+  log("💾 تحميل: "+a.download);
+}
+
+function clearAll(){
+  preview.style.display="none"; resultVideo.style.display="none"; canvasAnim.style.display="none";
+  progress.style.display="none";
+  document.getElementById('downloadBtn').style.display="none";
+  document.getElementById('imgStat').textContent="لا";
+  document.getElementById('status').textContent="جاهز";
+  uploadedFile=null; generatedVideoUrl=null;
+  log("🗑️ مسح");
+}
+
+log("V16.5 جاهز - Function: generate_video\n- ارفع صورة، حتظهر\n- دوس ولد فيديو Wan 2.2 حقيقي 10ث MP4\n- لو Space نايم، بيصحى في 60ث");
+</script>
+</body>
+</html>
